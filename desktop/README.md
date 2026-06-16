@@ -8,7 +8,7 @@ the maintained release matrix).
 
 > Not published to npm — distributed as packaged binaries (NSIS, portable EXE,
 > AppImage, .deb). For the npm-installable command-line tool, see
-> [`lumen-cli`](../cli).
+> [`@ajmal_n/lumen-cli`](../cli).
 
 ## Develop
 
@@ -57,7 +57,7 @@ src/
 ```
 
 The renderer never touches Node directly — it asks the main process to pick a
-directory and run [`lumen-core`](../core)'s scanner, then renders the returned
-stats. The same `renderReport` function used by [`lumen-cli`](../cli) backs the
+directory and run [`@ajmal_n/lumen-core`](../core)'s scanner, then renders the returned
+stats. The same `renderReport` function used by [`@ajmal_n/lumen-cli`](../cli) backs the
 "Export HTML" action, so the desktop's export and the CLI's report are
 byte-for-byte identical.

@@ -1,5 +1,5 @@
 {
-  "name": "lumen-core",
+  "name": "@ajmal_n/lumen-core",
   "version": "0.1.0",
   "description": "Shared scanner and HTML report renderer for Lumen.",
   "license": "MIT",

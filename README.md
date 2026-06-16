@@ -7,13 +7,13 @@ covering its file tree, sizes, line counts, languages, and largest files.
 
 It ships in two forms:
 
-- **`lumen-cli`** — a tiny Node.js CLI that drops a report into your `Downloads` folder.
+- **`@ajmal_n/lumen-cli`** — a tiny Node.js CLI that drops a report into your `Downloads` folder.
 - **`lumen-desktop`** — a cross-platform Electron GUI for Windows and Linux.
 
 ## Install the CLI
 
 ```bash
-npm install -g lumen-cli
+npm install -g @ajmal_n/lumen-cli
 lumen .
 ```
 
@@ -23,7 +23,7 @@ That's it. Lumen scans the current directory and writes
 Run on demand without installing:
 
 ```bash
-npx lumen-cli .
+npx @ajmal_n/lumen-cli .
 ```
 
 ## Install the Desktop app

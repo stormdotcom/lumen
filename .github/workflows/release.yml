@@ -20,14 +20,14 @@ jobs:
       - run: npm ci
       - run: npm run build
 
-      - name: Publish lumen-core
-        run: npm publish --access public
+      - name: Publish @ajmal_n/lumen-core
+        run: npm publish --access=public
         working-directory: core
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Publish lumen CLI
-        run: npm publish --access public
+      - name: Publish @ajmal_n/lumen-cli
+        run: npm publish --access=public
         working-directory: cli
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, shell } from "electron";
 import * as path from "path";
 import * as fs from "fs";
 import * as os from "os";
-import { scanRepo, renderReport, RepoStats } from "lumen-core";
+import { scanRepo, renderReport, RepoStats } from "@ajmal_n/lumen-core";
 
 let mainWindow: BrowserWindow | null = null;
 

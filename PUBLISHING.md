@@ -1,15 +1,23 @@
-# Publishing `lumen-cli` and `lumen-core` to npm
+# Publishing `@ajmal_n/lumen-cli` and `@ajmal_n/lumen-core` to npm
 
-Personal runbook. Both packages are unscoped (no `@org/` prefix), so no npm
-organization setup is needed.
+Personal runbook. Both packages are scoped under your npm username
+(`@ajmal_n`) — npm auto-provisions the scope from your account, no org
+setup needed, and scoped names skip the name-similarity check that blocked
+unscoped `lumen-core`.
 
-- `lumen-core` — the scanner + report library (must be published first).
-- `lumen-cli` — the CLI, depends on `lumen-core`. Installs the `lumen`
-  binary on the user's machine.
+- `@ajmal_n/lumen-core` — the scanner + report library (must be published first).
+- `@ajmal_n/lumen-cli` — the CLI, depends on core. Installs the **`lumen`**
+  binary via its `bin` field.
+
+> Even though the npm package is scoped (`@ajmal_n/lumen-cli`), the
+> command users type stays plain `lumen` — because `bin.lumen` in
+> `cli/package.json` controls the command name, independently of the
+> package name.
 
 ## 0. One-time setup
 
-1. **npm account** at <https://www.npmjs.com/signup>.
+1. **npm account** at <https://www.npmjs.com/signup> (your username here is
+   `ajmal_n`).
 2. **Log in locally**:
    ```bash
    npm login
@@ -18,25 +26,21 @@ organization setup is needed.
    ```bash
    npm profile enable-2fa auth-and-writes
    ```
-4. **Verify the names are free**:
-   ```bash
-   npm view lumen-core   # 404 = available
-   npm view lumen-cli
-   ```
-   If either is taken, switch to a scoped name like `@your-handle/lumen-cli`
-   and update the affected `package.json` + the `lumen-core` import paths.
+
+No scope/org creation needed — `@ajmal_n` belongs to your account automatically.
 
 ## 1. Pre-publish checklist
 
 In `core/package.json` and `cli/package.json` confirm:
 
-- `name`, `version`, `description`, `license`, `repository`, `bugs`, `homepage`,
-  `keywords`, `engines.node` are set.
-- `cli/package.json` has `"bin": { "lumen": "dist/index.js" }` — this is what
-  makes the installed command `lumen`, not `lumen-cli`.
-- Both packages have `"files": ["dist", "README.md"]` so nothing extra ships.
+- `name` is `@ajmal_n/lumen-core` / `@ajmal_n/lumen-cli`
+- `version` follows [semver](https://semver.org/)
+- `description`, `license`, `repository`, `bugs`, `homepage`, `keywords`,
+  `engines.node` are set
+- `cli/package.json` has `"bin": { "lumen": "dist/index.js" }`
+- Both have `"files": ["dist", "README.md"]`
 
-`cli/src/index.ts` has the `#!/usr/bin/env node` shebang already.
+The shebang (`#!/usr/bin/env node`) is already in `cli/src/index.ts`.
 
 ## 2. Build a clean release
 
@@ -53,42 +57,40 @@ cd core && npm pack --dry-run
 cd ../cli && npm pack --dry-run
 ```
 
-Anything larger than a few hundred KB usually means source maps or
-`node_modules` leaked in.
-
-## 3. Publish `lumen-core` first
+## 3. Publish core first
 
 ```bash
 cd core
-npm publish
+npm publish --access=public
 ```
 
-`lumen-cli` depends on `lumen-core@0.1.0`, so the registry must already
-contain that version when `lumen-cli` is published.
+`--access=public` is **required** for scoped packages on a free npm account
+(without it, npm publishes them as private and rejects the request).
 
-## 4. Publish `lumen-cli`
+## 4. Publish the CLI
 
 ```bash
 cd ../cli
-npm publish
+npm publish --access=public
 ```
 
 Verify:
 
 ```bash
-npm view lumen-cli
-npx lumen-cli --help
+npm view @ajmal_n/lumen-cli
+npx @ajmal_n/lumen-cli --help
 ```
 
 ## 5. Install + smoke test
 
-In a fresh terminal / directory:
-
 ```bash
-npm install -g lumen-cli
+npm install -g @ajmal_n/lumen-cli
 lumen --version
 lumen .                 # writes HTML to ~/Downloads
 ```
+
+Note the install line uses the scoped package name, but the command is
+still just `lumen`.
 
 ## 6. Tag the release in git
 
@@ -97,78 +99,74 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-Then create a GitHub release from the tag, linking
-<https://www.npmjs.com/package/lumen-cli>.
+Then create a GitHub release linking to the npm page:
+<https://www.npmjs.com/package/@ajmal_n/lumen-cli>.
 
 ## 7. Future versions
 
 ```bash
-cd core && npm version patch && npm publish
+cd core && npm version patch && npm publish --access=public
 cd ../cli
-# bump cli's dependency on lumen-core if core changed:
-#   "dependencies": { "lumen-core": "0.1.1" }
-npm version patch && npm publish
+# If core changed, bump the dependency range in cli/package.json:
+#   "dependencies": { "@ajmal_n/lumen-core": "0.1.1" }
+npm version patch && npm publish --access=public
 git push --follow-tags
 ```
 
 ## Automating with GitHub Actions
 
 `.github/workflows/release.yml` runs on `v*` tag pushes and publishes both
-packages. You need an `NPM_TOKEN` repo secret:
+packages with `--access=public`. You need an `NPM_TOKEN` repo secret.
 
-```bash
-npm token create --read-only=false
-# Or, easier — use a granular token (see Troubleshooting below).
-```
+The easiest token to use is a **granular access token with 2FA bypass**:
 
-Then on GitHub: **Settings → Secrets and variables → Actions → New repository
-secret**, name `NPM_TOKEN`, paste the token.
+1. <https://www.npmjs.com/settings/ajmal_n/tokens>
+2. **Generate New Token → Granular Access Token**
+3. Configure:
+   - Expiration: 365 days
+   - Packages and scopes: **Read and write** for `@ajmal_n/lumen-core` and
+     `@ajmal_n/lumen-cli` (or the whole `@ajmal_n` scope)
+   - **Bypass two-factor authentication when publishing** → ON
+4. Copy the token (`npm_…`) and on GitHub:
+   **Settings → Secrets and variables → Actions → New repository secret**,
+   name `NPM_TOKEN`, paste it.
 
 ## Deprecating or unpublishing
 
-- `npm deprecate lumen-cli@"<1.0.0" "please upgrade"` — flag old versions.
+- `npm deprecate "@ajmal_n/lumen-cli@<1.0.0" "please upgrade"` — flag old versions.
 - `npm unpublish` works only within 72 hours; prefer deprecation.
 
 ## Troubleshooting
 
 ### `403 Forbidden — Two-factor authentication … is required`
 
-npm requires a 2FA code (or a token that's allowed to skip it).
-
-**Interactive — pass the OTP inline:**
+Add `--otp=<6-digit code>` from your authenticator:
 ```bash
-cd core && npm publish --otp=123456
-cd ../cli && npm publish --otp=234567
+cd core && npm publish --access=public --otp=123456
+cd ../cli && npm publish --access=public --otp=234567
 ```
-You need a fresh code for each `publish` call (codes rotate every 30s and npm
-rejects a reused code).
+Use a fresh code for each call. For unattended publishes, use a granular
+token with 2FA bypass (see GitHub Actions section above).
 
-**Scripted / CI — granular token with 2FA bypass:**
-1. <https://www.npmjs.com/settings/your-username/tokens>
-2. **Generate New Token → Granular Access Token**
-3. Configure:
-   - Expiration: 365 days
-   - Packages and scopes → **Read and write** for `lumen-core` and `lumen-cli`
-   - **Bypass two-factor authentication when publishing** → ON
-4. Use it:
-   ```bash
-   echo "//registry.npmjs.org/:_authToken=npm_xxxxxxxx" >> ~/.npmrc
-   npm publish    # no --otp needed
-   ```
-   Or paste it into the `NPM_TOKEN` GitHub Actions secret.
+### `403 Forbidden — Package name too similar to existing package`
 
-### `404 Not Found - PUT … @lumen%2fcore`
+This is what triggered the move to a scoped name. If npm flags your scoped
+name too, you've collided with another scope's package — pick a different
+name segment (e.g. `@ajmal_n/lumen-tool-cli`).
 
-You tried to publish a scoped package whose scope you don't own. Either
-create the org at <https://www.npmjs.com/org/create> (free for public
-packages), or — as in this repo — switch to an unscoped name (`lumen-core`).
+### `404 Not Found - PUT … @yourscope%2fpkg`
+
+You're trying to publish under a scope that doesn't belong to you (or doesn't
+exist). `@ajmal_n` is yours, but if you fork this repo and forget to rename
+the scope, npm will 404. Update both `package.json` `name` fields and the
+imports in `cli/src/index.ts`, `desktop/src/main.ts`, `desktop/src/preload.ts`,
+and the dependency entries in `cli/package.json` + `desktop/package.json`.
 
 ### Other errors
 
 | Error | Fix |
 | --- | --- |
-| `403 Forbidden` (no 2FA mention) | Not logged in, or the name is taken by someone else. Re-run `npm login` and check `npm whoami`. |
-| `E402 Payment Required` | Scoped package without `--access public`. Add the flag or switch to an unscoped name. |
-| `name already exists` | Pick a scoped name like `@your-handle/lumen-cli`. |
-| `cannot resolve lumen-core` after publish | You published `lumen-cli` before `lumen-core`. Publish `lumen-core`, wait ~1 min, bump `lumen-cli`'s patch version, re-publish. |
+| `403 Forbidden` (no 2FA mention) | Not logged in, or `npm whoami` shows the wrong user. Re-run `npm login`. |
+| `E402 Payment Required` | Scoped package without `--access=public`. Always pass that flag. |
+| `cannot resolve @ajmal_n/lumen-core` after publish | You published the CLI before core. Publish core, wait ~1 min, bump the CLI's patch version, re-publish. |
 | `lumen: command not found` after global install | Add the global npm bin dir to your `PATH` (`npm config get prefix`). |

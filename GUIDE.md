@@ -46,13 +46,13 @@ Lumen ignores `node_modules`, `.git`, `dist`, `build`, `coverage`, `.next`,
 The fastest way:
 
 ```bash
-npm install -g lumen-cli
+npm install -g @ajmal_n/lumen-cli
 ```
 
 Or run without installing:
 
 ```bash
-npx lumen-cli .
+npx @ajmal_n/lumen-cli .
 ```
 
 Requires Node.js **18 or newer**.
@@ -149,7 +149,7 @@ Standard project files that were detected — `README.md`, `LICENSE`,
 
 ```
 lumen/
-├── core/                lumen-core — shared scanner + HTML renderer
+├── core/                @ajmal_n/lumen-core — shared scanner + HTML renderer
 │   ├── src/
 │   │   ├── scanner.ts   walks the tree, builds RepoStats
 │   │   ├── report.ts    turns RepoStats into a single HTML doc
@@ -157,7 +157,7 @@ lumen/
 │   ├── package.json
 │   └── tsconfig.json
 │
-├── cli/                 lumen-cli — npm package + `lumen` binary
+├── cli/                 @ajmal_n/lumen-cli — npm package + `lumen` binary
 │   ├── src/index.ts     CLI entry (uses commander)
 │   ├── package.json
 │   └── tsconfig.json
@@ -207,12 +207,12 @@ You should see something like `added N packages, audited N+ in workspaces`.
 
 This creates:
 - `node_modules/` at the root (shared deps hoisted here)
-- `node_modules/lumen-core` — a **symlink** into `core/`, so the CLI and
+- `node_modules/@ajmal_n/lumen-core` — a **symlink** into `core/`, so the CLI and
   desktop app import the live source you're editing, no rebuild dance.
 - `cli/node_modules/`, `desktop/node_modules/` — only package-specific deps
   that can't hoist.
 
-If you ever see `Cannot find module 'lumen-core'`, you skipped this step or
+If you ever see `Cannot find module '@ajmal_n/lumen-core'`, you skipped this step or
 the symlink was clobbered. Run `npm install` again.
 
 ### Step 3 — Build everything
@@ -268,7 +268,7 @@ Now `lumen .` from any directory invokes the binary built in `cli/dist/`.
 To undo:
 
 ```bash
-npm uninstall -g lumen-cli
+npm uninstall -g @ajmal_n/lumen-cli
 ```
 
 ### Step 6 — Iterate
@@ -379,7 +379,7 @@ npm run build:cli    # or build:desktop
 
 ```
                 ┌─────────────────────────┐
-                │      lumen-core        │
+                │      @ajmal_n/lumen-core        │
                 │                         │
                 │   scanRepo(path)        │
                 │       └─► RepoStats     │
@@ -392,7 +392,7 @@ npm run build:cli    # or build:desktop
         │                                         │
         ▼                                         ▼
 ┌─────────────────┐                  ┌──────────────────────────┐
-│   lumen-cli     │                  │     lumen-desktop        │
+│   @ajmal_n/lumen-cli     │                  │     lumen-desktop        │
 │                 │                  │                          │
 │ argv ─► scan    │                  │  main.ts                 │
 │      ─► render  │                  │   ├─ pickDirectory       │
@@ -411,7 +411,7 @@ npm run build:cli    # or build:desktop
 
 ### Why a monorepo?
 
-The shared `lumen-core` package lets the CLI and the desktop GUI produce
+The shared `@ajmal_n/lumen-core` package lets the CLI and the desktop GUI produce
 identical reports without duplicating scanner or template code. Workspace
 linking via npm means changes to `core/src/*.ts` are picked up by the other
 packages on the next `npm run build`.
@@ -463,7 +463,7 @@ short version:
    `cli/package.json`.
 2. Tag the commit: `git tag v0.x.y && git push --follow-tags`.
 3. The `Release` workflow in `.github/workflows/release.yml` publishes
-   `lumen-core` and `lumen-cli` to npm, and builds desktop binaries for
+   `@ajmal_n/lumen-core` and `@ajmal_n/lumen-cli` to npm, and builds desktop binaries for
    Windows and Linux as workflow artifacts.
 
 You need an `NPM_TOKEN` repository secret. Create it with:
@@ -476,7 +476,7 @@ Then add it under **Settings → Secrets and variables → Actions** on GitHub.
 
 ## Troubleshooting
 
-### `lumen: command not found` after `npm install -g lumen-cli`
+### `lumen: command not found` after `npm install -g @ajmal_n/lumen-cli`
 
 Your npm global bin directory isn't on `PATH`. Find it:
 
@@ -486,7 +486,7 @@ npm config get prefix
 
 Add `<prefix>/bin` (Linux/macOS) or `<prefix>` (Windows) to your `PATH`.
 
-### `cannot resolve lumen-core` after a fresh clone
+### `cannot resolve @ajmal_n/lumen-core` after a fresh clone
 
 You skipped `npm install` at the repo root. Run it — workspace symlinks only
 exist after install.

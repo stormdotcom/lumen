@@ -1,18 +1,18 @@
-# lumen-cli
+# @ajmal_n/lumen-cli
 
-The Lumen command-line interface. Published to npm as **`lumen-cli`** and
+The Lumen command-line interface. Published to npm as **`@ajmal_n/lumen-cli`** and
 installs the **`lumen`** binary.
 
 ## Install
 
 ```bash
-npm install -g lumen-cli
+npm install -g @ajmal_n/lumen-cli
 ```
 
 Or run on demand without installing:
 
 ```bash
-npx lumen-cli .
+npx @ajmal_n/lumen-cli .
 ```
 
 ## Usage
