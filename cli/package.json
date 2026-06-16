@@ -1,6 +1,6 @@
 {
   "name": "@ajmal_n/lumen-cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Scan a repository and emit a self-contained HTML insight report.",
   "license": "MIT",
   "bin": {
@@ -17,7 +17,7 @@
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\""
   },
   "dependencies": {
-    "@ajmal_n/lumen-core": "0.1.0",
+    "@ajmal_n/lumen-core": "0.2.0",
     "commander": "^12.1.0"
   },
   "devDependencies": {
