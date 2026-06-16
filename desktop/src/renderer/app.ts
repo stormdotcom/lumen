@@ -30,6 +30,8 @@ declare global {
   interface Window { lumen: LumenApi; }
 }
 
+export {};
+
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
 
 const btnOpen = $("#btn-open") as HTMLButtonElement;

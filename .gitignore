@@ -8,3 +8,6 @@ release/
 .env
 .env.local
 *.tsbuildinfo
+
+# Personal notes — not for the public repo
+PUBLISHING.md

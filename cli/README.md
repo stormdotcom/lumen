@@ -1,23 +1,23 @@
-# lumen (CLI)
+# lumen-cli
 
-Command-line interface for Lumen. Scans a directory and writes a self-contained
-HTML report.
+The Lumen command-line interface. Published to npm as **`lumen-cli`** and
+installs the **`lumen`** binary.
 
 ## Install
 
-From the monorepo root:
+```bash
+npm install -g lumen-cli
+```
+
+Or run on demand without installing:
 
 ```bash
-npm install
-npm run build
+npx lumen-cli .
 ```
 
 ## Usage
 
 ```bash
-node cli/dist/index.js [path] [options]
-
-# or, once published:
 lumen [path] [options]
 ```
 
@@ -27,7 +27,7 @@ lumen [path] [options]
 | --- | --- | --- |
 | `-o, --out <dir>` | Output directory for the HTML report | `~/Downloads` |
 | `-n, --name <name>` | Override the report filename (no extension) | timestamped |
-| `--print-path` | Print only the path to the generated report | off |
+| `--print-path` | Print only the path to the generated report (machine-readable) | off |
 | `-V, --version` | Print version | |
 | `-h, --help` | Print help | |
 
@@ -39,4 +39,22 @@ lumen .
 
 # Scan a specific repo, write to a custom location
 lumen ~/code/myproject --out ~/reports --name myproject-snapshot
+
+# Pipe the report path to another tool
+xdg-open "$(lumen . --print-path)"
 ```
+
+## Develop
+
+This package lives in the [Lumen monorepo](../). From the repo root:
+
+```bash
+npm install
+npm run build:cli
+node cli/dist/index.js .
+```
+
+## Publishing
+
+See [PUBLISHING.md](../PUBLISHING.md) at the repo root (personal runbook,
+gitignored).

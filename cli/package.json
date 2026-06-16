@@ -1,5 +1,5 @@
 {
-  "name": "lumen",
+  "name": "lumen-cli",
   "version": "0.1.0",
   "description": "Scan a repository and emit a self-contained HTML insight report.",
   "license": "MIT",

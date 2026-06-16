@@ -1,38 +1,48 @@
 # Lumen
 
-Repository insight tools — a CLI and a cross-platform desktop GUI that scan a code
-repository and produce a clean, self-contained HTML report.
+> Repository insight in one click.
 
-```
-lumen/
-├── core/        Shared scanner + report renderer (TypeScript library)
-├── cli/         `lumen` command-line tool
-└── desktop/     Electron desktop GUI (Windows + Linux)
-```
+Lumen scans a code repository and produces a clean, self-contained HTML report
+covering its file tree, sizes, line counts, languages, and largest files.
 
-## Quick start
+It ships in two forms:
+
+- **`lumen-cli`** — a tiny Node.js CLI that drops a report into your `Downloads` folder.
+- **`lumen-desktop`** — a cross-platform Electron GUI for Windows and Linux.
+
+## Install the CLI
 
 ```bash
-npm install
-npm run build
-
-# CLI
-node cli/dist/index.js .
-
-# Desktop
-npm run desktop
+npm install -g lumen-cli
+lumen .
 ```
 
-The CLI writes an HTML report to your `Downloads` folder by default. The desktop
-app renders the same report inside an Electron window and can export it to disk.
+That's it. Lumen scans the current directory and writes
+`~/Downloads/lumen-<repo>-<timestamp>.html`.
 
-## Packages
+Run on demand without installing:
 
-| Package | Description |
+```bash
+npx lumen-cli .
+```
+
+## Install the Desktop app
+
+Download the latest release for your platform from the
+[GitHub Releases page](../../releases):
+
+- **Windows** — `Lumen-Setup-<version>.exe` or the portable `Lumen-<version>.exe`
+- **Linux** — `Lumen-<version>.AppImage` or the `.deb` package
+
+Or build it yourself — see [GUIDE.md](./GUIDE.md#building-the-desktop-app).
+
+## Documentation
+
+| Document | What's in it |
 | --- | --- |
-| [`@lumen/core`](./core) | File-tree scanner and HTML report renderer. |
-| [`lumen`](./cli) | CLI binary wrapping `@lumen/core`. |
-| [`lumen-desktop`](./desktop) | Electron-based GUI for Windows and Linux. |
+| [GUIDE.md](./GUIDE.md) | Full guide — CLI usage, desktop UI, architecture, building, customizing. |
+| [CONTRIBUTING.md](./CONTRIBUTING.md) | How to set up the repo and submit changes. |
+| Package docs | [`core/`](./core) · [`cli/`](./cli) · [`desktop/`](./desktop) |
 
 ## License
 
