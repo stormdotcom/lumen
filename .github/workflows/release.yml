@@ -1,0 +1,64 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish-npm:
+    name: Publish CLI to npm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: "https://registry.npmjs.org"
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Publish @lumen/core
+        run: npm publish --access public
+        working-directory: core
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish lumen CLI
+        run: npm publish --access public
+        working-directory: cli
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  build-desktop:
+    name: Build desktop binaries (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Build Windows binaries
+        if: runner.os == 'Windows'
+        run: npm run dist:win
+        working-directory: desktop
+
+      - name: Build Linux binaries
+        if: runner.os == 'Linux'
+        run: npm run dist:linux
+        working-directory: desktop
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lumen-desktop-${{ matrix.os }}
+          path: desktop/release/*
