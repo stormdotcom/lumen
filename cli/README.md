@@ -25,23 +25,36 @@ lumen [path] [options]
 
 | Flag | Description | Default |
 | --- | --- | --- |
-| `-o, --out <dir>` | Output directory for the HTML report | `~/Downloads` |
+| `-f, --format <fmt>` | Output format — `html` or `markdown` (alias: `md`) | `html` |
+| `-o, --out <dir>` | Output directory for the report | `~/Downloads` |
 | `-n, --name <name>` | Override the report filename (no extension) | timestamped |
 | `--print-path` | Print only the path to the generated report (machine-readable) | off |
 | `-V, --version` | Print version | |
 | `-h, --help` | Print help | |
 
+The file extension is chosen automatically from `--format` (`.html` or `.md`).
+
 ### Examples
 
 ```bash
-# Scan current directory, report into Downloads
+# Scan current directory, default HTML report into Downloads
 lumen .
+
+# Markdown report — drop directly into a wiki, GitHub issue, or README
+lumen . --format markdown
+
+# Short alias
+lumen . -f md
 
 # Scan a specific repo, write to a custom location
 lumen ~/code/myproject --out ~/reports --name myproject-snapshot
 
 # Pipe the report path to another tool
 xdg-open "$(lumen . --print-path)"
+
+# Markdown straight into a file in the current dir
+lumen . -f md -o . -n REPORT
+# → ./REPORT.md
 ```
 
 ## Develop

@@ -69,17 +69,25 @@ lumen [path] [options]
 
 | Flag | Description | Default |
 | --- | --- | --- |
-| `-o, --out <dir>` | Output directory for the HTML report | `~/Downloads` |
+| `-f, --format <fmt>` | Output format — `html` or `markdown` (alias: `md`) | `html` |
+| `-o, --out <dir>` | Output directory for the report | `~/Downloads` |
 | `-n, --name <name>` | Override the report filename (no extension) | `lumen-<repo>-<timestamp>` |
 | `--print-path` | Print only the report path (machine-readable) | off |
 | `-V, --version` | Print the version | |
 | `-h, --help` | Print help | |
 
+The file extension is chosen automatically based on `--format` (`.html` or
+`.md`), so you don't put it in `--name`.
+
 ### Examples
 
 ```bash
-# Scan current directory → report into ~/Downloads
+# Scan current directory → HTML report into ~/Downloads
 lumen .
+
+# Markdown report instead — perfect for pasting into a README or wiki
+lumen . --format markdown
+lumen . -f md            # same thing, short alias
 
 # Scan a project, save the report next to it
 lumen ~/code/myapp --out ~/code/myapp
@@ -87,9 +95,20 @@ lumen ~/code/myapp --out ~/code/myapp
 # Custom filename
 lumen . --name today-snapshot
 
+# Markdown straight into the current dir
+lumen . -f md -o . -n REPORT     # → ./REPORT.md
+
 # Open the report immediately (Linux/macOS)
 xdg-open "$(lumen . --print-path)" 2>/dev/null || open "$(lumen . --print-path)"
 ```
+
+### Output formats
+
+- **HTML** (default) — a single self-contained document with inline CSS,
+  styled like the desktop GUI. Open in a browser, email, or upload anywhere.
+- **Markdown** — renders the same data as GitHub-flavored Markdown tables
+  with collapsible "ignored directories" details. Pastes cleanly into
+  GitHub issues, READMEs, Notion, and most wikis.
 
 ### Exit codes
 
