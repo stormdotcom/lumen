@@ -10,7 +10,7 @@
     "desktop"
   ],
   "scripts": {
-    "build:core": "npm run build -w @lumen/core",
+    "build:core": "npm run build -w lumen-core",
     "build:cli": "npm run build -w lumen-cli",
     "build:desktop": "npm run build -w lumen-desktop",
     "build": "npm run build:core && npm run build:cli && npm run build:desktop",

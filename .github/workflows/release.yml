@@ -20,7 +20,7 @@ jobs:
       - run: npm ci
       - run: npm run build
 
-      - name: Publish @lumen/core
+      - name: Publish lumen-core
         run: npm publish --access public
         working-directory: core
         env:

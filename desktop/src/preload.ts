@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { RepoStats } from "@lumen/core";
+import type { RepoStats } from "lumen-core";
 
 const api = {
   pickDirectory: (): Promise<string | null> => ipcRenderer.invoke("dialog:pick-directory"),

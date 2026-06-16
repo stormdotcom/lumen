@@ -3,7 +3,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { Command } from "commander";
-import { scanRepo, renderReport } from "@lumen/core";
+import { scanRepo, renderReport } from "lumen-core";
 
 function defaultOutputDir(): string {
   return path.join(os.homedir(), "Downloads");

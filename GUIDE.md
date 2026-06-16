@@ -149,7 +149,7 @@ Standard project files that were detected — `README.md`, `LICENSE`,
 
 ```
 lumen/
-├── core/                @lumen/core — shared scanner + HTML renderer
+├── core/                lumen-core — shared scanner + HTML renderer
 │   ├── src/
 │   │   ├── scanner.ts   walks the tree, builds RepoStats
 │   │   ├── report.ts    turns RepoStats into a single HTML doc
@@ -187,29 +187,111 @@ lumen/
 
 ## Building from source
 
-Requirements: Node.js 18+, npm 9+.
+Requirements: Node.js **18 or newer**, npm **9 or newer**.
+
+### Step 1 — Clone
 
 ```bash
 git clone https://github.com/<you>/lumen.git
 cd lumen
+```
+
+### Step 2 — Install dependencies (once)
+
+```bash
 npm install
+```
+
+`npm install` at the root does the work for **every** workspace in one shot.
+You should see something like `added N packages, audited N+ in workspaces`.
+
+This creates:
+- `node_modules/` at the root (shared deps hoisted here)
+- `node_modules/lumen-core` — a **symlink** into `core/`, so the CLI and
+  desktop app import the live source you're editing, no rebuild dance.
+- `cli/node_modules/`, `desktop/node_modules/` — only package-specific deps
+  that can't hoist.
+
+If you ever see `Cannot find module 'lumen-core'`, you skipped this step or
+the symlink was clobbered. Run `npm install` again.
+
+### Step 3 — Build everything
+
+```bash
 npm run build
 ```
 
-`npm install` at the root pulls dependencies for every workspace in one pass.
-`npm run build` compiles `core`, then `cli`, then `desktop` (order matters
-because the latter two depend on `@lumen/core`).
+Compiles in order: `core` → `cli` → `desktop` (renderer + main + preload +
+asset copy). The order matters because the latter two import the JS that
+`core`'s build emits.
 
-Run the freshly built CLI:
+You can also build a single package:
+
+```bash
+npm run build:core
+npm run build:cli
+npm run build:desktop
+```
+
+### Step 4 — Run it
+
+CLI on the current folder:
 
 ```bash
 node cli/dist/index.js .
 ```
 
-Run the freshly built desktop app:
+Or use the root shortcut:
+
+```bash
+npm run cli -- .
+```
+
+Desktop app:
 
 ```bash
 npm run desktop
+```
+
+### Step 5 (optional) — Install the CLI globally from your local clone
+
+If you want to type `lumen` anywhere on your machine and have it run *your*
+local code, link it:
+
+```bash
+npm install -g ./cli
+# or:
+cd cli && npm link
+```
+
+Now `lumen .` from any directory invokes the binary built in `cli/dist/`.
+To undo:
+
+```bash
+npm uninstall -g lumen-cli
+```
+
+### Step 6 — Iterate
+
+A typical edit-build-run loop:
+
+```bash
+# edit a file under core/src/ or cli/src/
+npm run build:core   # if you touched core
+npm run build:cli    # if you touched cli
+node cli/dist/index.js .
+```
+
+For the desktop app, `npm run -w lumen-desktop dev` rebuilds and re-launches
+Electron in one command.
+
+### Cleaning up
+
+```bash
+npm run clean             # wipes every dist/
+rm -rf node_modules core/node_modules cli/node_modules desktop/node_modules
+rm package-lock.json      # only if you want a fully fresh resolve
+npm install               # start over
 ```
 
 ### Build a single package
@@ -297,7 +379,7 @@ npm run build:cli    # or build:desktop
 
 ```
                 ┌─────────────────────────┐
-                │      @lumen/core        │
+                │      lumen-core        │
                 │                         │
                 │   scanRepo(path)        │
                 │       └─► RepoStats     │
@@ -329,7 +411,7 @@ npm run build:cli    # or build:desktop
 
 ### Why a monorepo?
 
-The shared `@lumen/core` package lets the CLI and the desktop GUI produce
+The shared `lumen-core` package lets the CLI and the desktop GUI produce
 identical reports without duplicating scanner or template code. Workspace
 linking via npm means changes to `core/src/*.ts` are picked up by the other
 packages on the next `npm run build`.
@@ -381,7 +463,7 @@ short version:
    `cli/package.json`.
 2. Tag the commit: `git tag v0.x.y && git push --follow-tags`.
 3. The `Release` workflow in `.github/workflows/release.yml` publishes
-   `@lumen/core` and `lumen-cli` to npm, and builds desktop binaries for
+   `lumen-core` and `lumen-cli` to npm, and builds desktop binaries for
    Windows and Linux as workflow artifacts.
 
 You need an `NPM_TOKEN` repository secret. Create it with:
@@ -404,7 +486,7 @@ npm config get prefix
 
 Add `<prefix>/bin` (Linux/macOS) or `<prefix>` (Windows) to your `PATH`.
 
-### `cannot resolve @lumen/core` after a fresh clone
+### `cannot resolve lumen-core` after a fresh clone
 
 You skipped `npm install` at the repo root. Run it — workspace symlinks only
 exist after install.

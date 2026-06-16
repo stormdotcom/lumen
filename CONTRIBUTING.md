@@ -3,7 +3,7 @@
 Thanks for your interest in helping out! Lumen is a small TypeScript monorepo
 with three packages:
 
-- `core/`     — shared library (`@lumen/core`)
+- `core/`     — shared library (`lumen-core`)
 - `cli/`      — `lumen` CLI binary
 - `desktop/`  — Electron GUI (`lumen-desktop`)
 
@@ -25,7 +25,7 @@ npm run build
 
 `npm install` at the root installs all workspace dependencies in one pass.
 `npm run build` compiles `core`, then `cli`, then `desktop` (the order matters
-because `cli` and `desktop` both depend on `@lumen/core`).
+because `cli` and `desktop` both depend on `lumen-core`).
 
 ## Running things
 

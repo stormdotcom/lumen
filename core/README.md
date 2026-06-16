@@ -1,4 +1,4 @@
-# @lumen/core
+# lumen-core
 
 Shared library used by [`lumen-cli`](../cli) and [`lumen-desktop`](../desktop).
 Provides a filesystem scanner and a self-contained HTML report renderer.
@@ -6,13 +6,13 @@ Provides a filesystem scanner and a self-contained HTML report renderer.
 ## Install
 
 ```bash
-npm install @lumen/core
+npm install lumen-core
 ```
 
 ## Usage
 
 ```ts
-import { scanRepo, renderReport } from "@lumen/core";
+import { scanRepo, renderReport } from "lumen-core";
 
 const stats = scanRepo("/path/to/repo");
 const html = renderReport(stats);
