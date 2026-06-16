@@ -1,7 +1,7 @@
 {
   "name": "@ajmal_n/lumen-core",
-  "version": "0.2.0",
-  "description": "Shared scanner and HTML report renderer for Lumen.",
+  "version": "0.3.0",
+  "description": "Shared repo scanner, HTML/Markdown report renderer, and test-coverage parser for Lumen.",
   "license": "MIT",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

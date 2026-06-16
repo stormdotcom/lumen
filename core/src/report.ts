@@ -1,4 +1,5 @@
 import { RepoStats } from "./scanner";
+import { CoverageReport, CoverageMetric, FileCoverage } from "./coverage";
 
 function esc(s: string): string {
   return s
@@ -82,7 +83,103 @@ function fileIcon(): string {
   return `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="#9aa6b9" d="M3 1.5A1.5 1.5 0 0 1 4.5 0h5L13 3.5v11A1.5 1.5 0 0 1 11.5 16h-7A1.5 1.5 0 0 1 3 14.5v-13zM9 1v3h3L9 1z"/></svg>`;
 }
 
-export function renderReport(stats: RepoStats): string {
+function pctTone(p: number, threshold: number | undefined): "good" | "warn" | "bad" {
+  const t = threshold ?? 80;
+  if (p >= t) return "good";
+  if (p >= t * 0.75) return "warn";
+  return "bad";
+}
+
+function metricTone(p: number): "good" | "amber" | "red" {
+  if (p >= 80) return "good";
+  if (p >= 50) return "amber";
+  return "red";
+}
+
+function coverageCards(cov: CoverageReport, threshold?: number): string {
+  const card = (label: string, m: CoverageMetric, icon: string) => {
+    const tone = metricTone(m.pct);
+    const cls = tone === "good" ? "green" : tone === "amber" ? "amber" : "red";
+    return `<div class="stat">
+      <div class="row">${icon}${label}</div>
+      <div class="value ${cls}">${m.pct.toFixed(1)}%</div>
+      <div class="foot">${m.covered.toLocaleString()} / ${m.total.toLocaleString()} covered</div>
+    </div>`;
+  };
+  const i = (color: string, path: string) =>
+    `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2">${path}</svg>`;
+  const thresholdPill =
+    typeof threshold === "number"
+      ? (() => {
+          const passed = cov.total.lines.pct >= threshold;
+          return `<span class="pill ${passed ? "good" : "warn"}">threshold ${threshold}% — ${passed ? "passed" : "failed"}</span>`;
+        })()
+      : "";
+  return `
+  <section class="panel" style="margin-bottom:20px">
+    <div class="panel-head">
+      <span>Test Coverage <span class="dim">· ${esc(cov.framework)}</span></span>
+      <span class="counts">${thresholdPill}<span class="dim">${cov.files.length} files</span></span>
+    </div>
+    <div class="panel-body tight" style="padding:18px">
+      <div class="grid-stats" style="margin-bottom:0">
+        ${card("Lines", cov.total.lines, i("#2f6df3", '<path d="M3 6h18M3 12h18M3 18h12"/>'))}
+        ${card("Statements", cov.total.statements, i("#7a5cf0", '<path d="M4 4h16v16H4z"/><path d="M4 10h16"/>'))}
+        ${card("Functions", cov.total.functions, i("#1f9d61", '<path d="M5 4l3 16M11 4l3 16M3 9h18M3 15h18"/>'))}
+        ${card("Branches", cov.total.branches, i("#d98316", '<path d="M6 3v12a3 3 0 0 0 3 3h6"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="18" cy="18" r="2"/>'))}
+      </div>
+    </div>
+  </section>`;
+}
+
+function coverageTable(cov: CoverageReport, threshold?: number): string {
+  const rows = cov.files
+    .slice()
+    .sort((a, b) => a.lines.pct - b.lines.pct)
+    .slice(0, 100)
+    .map((f) => coverageRow(f, threshold))
+    .join("");
+  return `<section class="panel">
+    <div class="panel-head">
+      <span>Per-file Coverage</span>
+      <span class="dim">${cov.files.length} files · sorted by lowest line coverage</span>
+    </div>
+    <div class="panel-body tight">
+      <table>
+        <thead><tr>
+          <th>File</th>
+          <th class="num">Lines</th>
+          <th class="num">Statements</th>
+          <th class="num">Functions</th>
+          <th class="num">Branches</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  </section>`;
+}
+
+function pctCell(m: CoverageMetric, threshold?: number): string {
+  const tone = pctTone(m.pct, threshold);
+  return `<td class="num cov-${tone}">${m.pct.toFixed(1)}% <span class="dim">(${m.covered}/${m.total})</span></td>`;
+}
+
+function coverageRow(f: FileCoverage, threshold?: number): string {
+  return `<tr>
+    <td class="mono path">${esc(f.path)}</td>
+    ${pctCell(f.lines, threshold)}
+    ${pctCell(f.statements, threshold)}
+    ${pctCell(f.functions, threshold)}
+    ${pctCell(f.branches, threshold)}
+  </tr>`;
+}
+
+export interface RenderReportOptions {
+  coverage?: CoverageReport | null;
+  threshold?: number;
+}
+
+export function renderReport(stats: RepoStats, options: RenderReportOptions = {}): string {
   const maxExtFiles = Math.max(1, ...stats.byExtension.map((e) => e.files));
   const maxDirFiles = Math.max(1, ...stats.topDirectories.map((d) => d.files));
   const maxFileSize = Math.max(1, ...stats.largestFiles.map((f) => f.size));
@@ -137,6 +234,10 @@ export function renderReport(stats: RepoStats): string {
 
   const avgSize = stats.totalFiles ? Math.round(stats.totalBytes / stats.totalFiles) : 0;
   const avgLines = stats.totalFiles ? Math.round(stats.totalLines / stats.totalFiles) : 0;
+
+  const coverageHtml = options.coverage
+    ? coverageCards(options.coverage, options.threshold) + coverageTable(options.coverage, options.threshold)
+    : "";
 
   return `<!doctype html>
 <html lang="en">
@@ -270,6 +371,10 @@ export function renderReport(stats: RepoStats): string {
   .path { max-width: 520px; overflow: hidden; text-overflow: ellipsis; }
   .dim { color: var(--dim); }
 
+  .cov-good { color: var(--green); font-weight: 600; }
+  .cov-warn { color: var(--amber); font-weight: 600; }
+  .cov-bad { color: var(--red); font-weight: 600; }
+
   .bar { background: #eef1f6; border-radius: 4px; height: 6px; min-width: 100px; overflow: hidden; }
   .bar-fill { height: 100%; background: var(--accent); border-radius: 4px; }
   .bar-warn .bar-fill { background: linear-gradient(90deg, var(--amber), var(--red)); }
@@ -321,7 +426,10 @@ export function renderReport(stats: RepoStats): string {
     <div class="tab active">Overview</div>
     <div class="tab">File Types</div>
     <div class="tab">Directories</div>
+    ${options.coverage ? '<div class="tab">Coverage</div>' : ""}
   </div>
+
+  ${coverageHtml}
 
   <div class="grid-stats">
     <div class="stat">

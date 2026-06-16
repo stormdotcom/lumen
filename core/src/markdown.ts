@@ -1,4 +1,5 @@
 import { RepoStats } from "./scanner";
+import { CoverageReport, CoverageMetric } from "./coverage";
 
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -11,7 +12,23 @@ function escapeCell(s: string): string {
   return s.replace(/\|/g, "\\|");
 }
 
-export function renderMarkdown(stats: RepoStats): string {
+function fmtMetric(m: CoverageMetric): string {
+  return `${m.pct.toFixed(1)}% (${m.covered.toLocaleString()} / ${m.total.toLocaleString()})`;
+}
+
+function coverageEmoji(pct: number, threshold?: number): string {
+  const t = threshold ?? 80;
+  if (pct >= t) return ":white_check_mark:";
+  if (pct >= t * 0.75) return ":warning:";
+  return ":x:";
+}
+
+export interface RenderMarkdownOptions {
+  coverage?: CoverageReport | null;
+  threshold?: number;
+}
+
+export function renderMarkdown(stats: RepoStats, options: RenderMarkdownOptions = {}): string {
   const avgSize = stats.totalFiles ? Math.round(stats.totalBytes / stats.totalFiles) : 0;
   const avgLines = stats.totalFiles ? Math.round(stats.totalLines / stats.totalFiles) : 0;
 
@@ -86,6 +103,48 @@ export function renderMarkdown(stats: RepoStats): string {
     lines.push("");
     lines.push("</details>");
     lines.push("");
+  }
+
+  const cov = options.coverage;
+  if (cov) {
+    lines.push(`## Test coverage — ${cov.framework}`);
+    lines.push("");
+    if (typeof options.threshold === "number") {
+      const passed = cov.total.lines.pct >= options.threshold;
+      lines.push(
+        `> **Threshold:** ${options.threshold}% — ${passed ? ":white_check_mark: passed" : ":x: failed"} (lines ${cov.total.lines.pct.toFixed(1)}%)`,
+      );
+      lines.push("");
+    }
+    lines.push("| Metric | Coverage |");
+    lines.push("| --- | ---: |");
+    lines.push(`| Lines | ${coverageEmoji(cov.total.lines.pct, options.threshold)} ${fmtMetric(cov.total.lines)} |`);
+    lines.push(`| Statements | ${coverageEmoji(cov.total.statements.pct, options.threshold)} ${fmtMetric(cov.total.statements)} |`);
+    lines.push(`| Functions | ${coverageEmoji(cov.total.functions.pct, options.threshold)} ${fmtMetric(cov.total.functions)} |`);
+    lines.push(`| Branches | ${coverageEmoji(cov.total.branches.pct, options.threshold)} ${fmtMetric(cov.total.branches)} |`);
+    lines.push("");
+
+    const worst = cov.files
+      .slice()
+      .sort((a, b) => a.lines.pct - b.lines.pct)
+      .slice(0, 30);
+    if (worst.length) {
+      lines.push("### Files with lowest line coverage");
+      lines.push("");
+      lines.push("| File | Lines | Statements | Functions | Branches |");
+      lines.push("| --- | ---: | ---: | ---: | ---: |");
+      for (const f of worst) {
+        lines.push(
+          `| \`${escapeCell(f.path)}\` | ${f.lines.pct.toFixed(1)}% | ${f.statements.pct.toFixed(1)}% | ${f.functions.pct.toFixed(1)}% | ${f.branches.pct.toFixed(1)}% |`,
+        );
+      }
+      lines.push("");
+    }
+
+    if (cov.sources.length) {
+      lines.push(`> Sources: ${cov.sources.map((s) => `\`${escapeCell(s)}\``).join(", ")}`);
+      lines.push("");
+    }
   }
 
   lines.push("---");
