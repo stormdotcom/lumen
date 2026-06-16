@@ -1,0 +1,46 @@
+{
+  "name": "lumen-desktop",
+  "version": "0.1.0",
+  "description": "Lumen desktop GUI — cross-platform Electron app for Windows and Linux.",
+  "license": "MIT",
+  "main": "dist/main.js",
+  "scripts": {
+    "build:main": "tsc -p tsconfig.json",
+    "build:renderer": "tsc -p tsconfig.renderer.json",
+    "build:assets": "node scripts/copy-assets.js",
+    "build": "npm run build:main && npm run build:renderer && npm run build:assets",
+    "start": "electron .",
+    "dev": "npm run build && npm run start",
+    "dist:win": "electron-builder --win --x64",
+    "dist:linux": "electron-builder --linux --x64",
+    "dist:all": "electron-builder --win --linux --x64",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true});require('fs').rmSync('release',{recursive:true,force:true})\""
+  },
+  "dependencies": {
+    "@lumen/core": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3",
+    "typescript": "^5.4.0"
+  },
+  "build": {
+    "appId": "io.lumen.desktop",
+    "productName": "Lumen",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": ["nsis", "portable"]
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Development"
+    }
+  }
+}
