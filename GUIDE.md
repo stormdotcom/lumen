@@ -72,6 +72,9 @@ lumen [path] [options]
 | `-f, --format <fmt>` | Output format — `html` or `markdown` (alias: `md`) | `html` |
 | `-o, --out <dir>` | Output directory for the report | `~/Downloads` |
 | `-n, --name <name>` | Override the report filename (no extension) | `lumen-<repo>-<timestamp>` |
+| `--coverage-dir <dir>` | Path to coverage output dir (e.g. `./coverage`). Auto-discovered if omitted. | auto |
+| `--no-coverage` | Skip test-coverage detection entirely | off |
+| `-t, --threshold <pct>` | Fail with exit code `2` if total line coverage < pct | none |
 | `--print-path` | Print only the report path (machine-readable) | off |
 | `-V, --version` | Print the version | |
 | `-h, --help` | Print help | |
@@ -110,12 +113,45 @@ xdg-open "$(lumen . --print-path)" 2>/dev/null || open "$(lumen . --print-path)"
   with collapsible "ignored directories" details. Pastes cleanly into
   GitHub issues, READMEs, Notion, and most wikis.
 
+### Test coverage
+
+Lumen detects your testing framework (Jest, Vitest, Nx, Jasmine, Karma,
+Mocha+nyc, AVA, tap) from `package.json` + config files, then scans for
+Istanbul `coverage-summary.json` and `lcov.info` files anywhere in the repo —
+including Nx-style nested layouts (`coverage/apps/<name>/coverage-summary.json`).
+
+Run your tests with coverage enabled first:
+
+```bash
+# Jest
+npx jest --coverage --coverageReporters=json-summary --coverageReporters=lcov
+
+# Vitest
+npx vitest run --coverage --coverage.reporter=json-summary --coverage.reporter=lcov
+
+# Nx (jest under the hood)
+npx nx test myapp --coverage --coverageReporters=json-summary
+
+# Mocha + nyc
+npx nyc --reporter=json-summary --reporter=lcov mocha
+```
+
+Then run Lumen. Coverage cards (Lines / Statements / Functions / Branches),
+the worst-covered files, and a threshold pill all show up automatically.
+
+```bash
+lumen . -f md -o . -n COVERAGE -t 80      # CI gate at 80% line coverage
+lumen . --coverage-dir ./apps/web/coverage
+lumen . --no-coverage                     # skip detection
+```
+
 ### Exit codes
 
 | Code | Meaning |
 | --- | --- |
 | 0 | Report written |
-| 1 | Path doesn't exist or isn't a directory |
+| 1 | Path doesn't exist or isn't a directory, or bad flag |
+| 2 | Coverage below `--threshold` |
 
 ## Install the Desktop app
 
@@ -168,10 +204,12 @@ Standard project files that were detected — `README.md`, `LICENSE`,
 
 ```
 lumen/
-├── core/                @ajmal_n/lumen-core — shared scanner + HTML renderer
+├── core/                @ajmal_n/lumen-core — shared scanner + renderers + coverage
 │   ├── src/
 │   │   ├── scanner.ts   walks the tree, builds RepoStats
-│   │   ├── report.ts    turns RepoStats into a single HTML doc
+│   │   ├── report.ts    RepoStats (+ CoverageReport) → single HTML doc
+│   │   ├── markdown.ts  RepoStats (+ CoverageReport) → GFM markdown
+│   │   ├── coverage.ts  framework detection + Istanbul/lcov parser
 │   │   └── index.ts     re-exports
 │   ├── package.json
 │   └── tsconfig.json

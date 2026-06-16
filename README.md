@@ -2,8 +2,10 @@
 
 > Repository insight in one click.
 
-Lumen scans a code repository and produces a clean, self-contained HTML report
-covering its file tree, sizes, line counts, languages, and largest files.
+Lumen scans a code repository and produces a clean, self-contained HTML or
+Markdown report covering its file tree, sizes, line counts, languages, largest
+files — and an optional **test-coverage breakdown** that works with Jest,
+Vitest, Nx, Jasmine, Karma, Mocha+nyc, AVA, or tap.
 
 It ships in two forms:
 
@@ -24,6 +26,14 @@ Run on demand without installing:
 
 ```bash
 npx @ajmal_n/lumen-cli .
+```
+
+With test coverage (after `jest --coverage`, `vitest run --coverage`,
+`nx test --coverage`, or `nyc mocha`):
+
+```bash
+lumen . -f md -o . -n COVERAGE -t 80
+# → ./COVERAGE.md, exits 2 if total line coverage is below 80%
 ```
 
 ## Install the Desktop app
