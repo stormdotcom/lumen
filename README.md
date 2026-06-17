@@ -28,6 +28,9 @@ Run on demand without installing:
 npx @ajmal_n/lumen-cli .
 ```
 
+A sample HTML report for this repository is included here:
+[cli/lumen-cli-20260617-220258.html](./cli/lumen-cli-20260617-220258.html).
+
 With test coverage (after `jest --coverage`, `vitest run --coverage`,
 `nx test --coverage`, or `nyc mocha`):
 
@@ -35,6 +38,9 @@ With test coverage (after `jest --coverage`, `vitest run --coverage`,
 lumen . -f md -o . -n COVERAGE -t 80
 # → ./COVERAGE.md, exits 2 if total line coverage is below 80%
 ```
+
+This sample command produces a Markdown coverage report with the coverage
+summary and a per-file breakdown you can review in CI or locally.
 
 ## Install the Desktop app
 
