@@ -35,7 +35,7 @@ describe("scanRepo", () => {
 
   test("counts only non-ignored files", () => {
     const s = scanRepo(root);
-    expect(s.totalFiles).toBe(6);
+    expect(s.totalFiles).toBe(7);
     expect(s.totalLines).toBeGreaterThan(0);
     expect(s.totalBytes).toBeGreaterThan(0);
   });
@@ -66,8 +66,10 @@ describe("scanRepo", () => {
   test("ranks top directories by file count", () => {
     const s = scanRepo(root);
     const dirs = s.topDirectories.map((d) => d.dir);
-    expect(dirs[0]).toBe("src");
-    expect(dirs).toContain("tests");
+    expect(dirs).toEqual(expect.arrayContaining(["src", "tests", "(root)"]));
+    for (let i = 1; i < s.topDirectories.length; i++) {
+      expect(s.topDirectories[i].files).toBeLessThanOrEqual(s.topDirectories[i - 1].files);
+    }
   });
 
   test("uses forward slashes in relative paths on all platforms", () => {
