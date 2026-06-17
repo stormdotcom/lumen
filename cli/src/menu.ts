@@ -30,14 +30,18 @@ const importEsm: <T>(specifier: string) => Promise<T> = new Function(
   "return import(s)",
 ) as <T>(specifier: string) => Promise<T>;
 
+type ActionValue =
+  | "test-terminal"
+  | "test-html"
+  | "test-md"
+  | "scan-only"
+  | "ai"
+  | "change-repo"
+  | "change-cmd"
+  | "exit";
+
 interface MenuChoice {
-  value:
-    | "test-terminal"
-    | "test-html"
-    | "test-md"
-    | "scan-only"
-    | "ai"
-    | "exit";
+  value: ActionValue;
   label: string;
   hint?: string;
 }
@@ -65,6 +69,34 @@ function pct(n: number) {
   return `${n.toFixed(1)}%`;
 }
 
+async function promptRepoPath(p: Clack, initial: string): Promise<string> {
+  const v = await p.text({
+    message: "Repository path",
+    placeholder: initial,
+    initialValue: initial,
+    validate: (val) => {
+      if (!val) return undefined;
+      const abs = path.resolve(val);
+      if (!fs.existsSync(abs)) return `Path doesn't exist: ${abs}`;
+      if (!fs.statSync(abs).isDirectory()) return `Not a directory: ${abs}`;
+      return undefined;
+    },
+  });
+  cancelIfNeeded(p, v);
+  return path.resolve(String(v || initial));
+}
+
+async function promptTestCmd(p: Clack, repoPath: string, initial?: string): Promise<string> {
+  const detected = initial || pkgTestScript(repoPath) || "npm test";
+  const v = await p.text({
+    message: "Test command (leave blank to skip running tests)",
+    placeholder: detected,
+    initialValue: detected,
+  });
+  cancelIfNeeded(p, v);
+  return String(v || "").trim();
+}
+
 export async function runMenu(): Promise<void> {
   const p: Clack = await importEsm<Clack>("@clack/prompts");
 
@@ -72,242 +104,245 @@ export async function runMenu(): Promise<void> {
 
   p.intro("lumen · interactive mode");
 
-  const startCwd = process.cwd();
+  let repoPath = await promptRepoPath(p, process.cwd());
+  let testCmd = await promptTestCmd(p, repoPath);
 
-  const repoRaw = await p.text({
-    message: "Repository path",
-    placeholder: startCwd,
-    initialValue: startCwd,
-    validate: (v) => {
-      if (!v) return undefined;
-      const abs = path.resolve(v);
-      if (!fs.existsSync(abs)) return `Path doesn't exist: ${abs}`;
-      if (!fs.statSync(abs).isDirectory()) return `Not a directory: ${abs}`;
-      return undefined;
-    },
-  });
-  cancelIfNeeded(p, repoRaw);
-  const repoPath = path.resolve(String(repoRaw || startCwd));
+  while (true) {
+    const probes = await probeAll();
+    const availableProviders = probes.filter((pp) => pp.available);
 
-  const detectedCmd = pkgTestScript(repoPath) || "npm test";
-  const cmdRaw = await p.text({
-    message: "Test command (leave blank to skip running tests)",
-    placeholder: detectedCmd,
-    initialValue: detectedCmd,
-  });
-  cancelIfNeeded(p, cmdRaw);
-  const testCmd = String(cmdRaw || "").trim();
-
-  const probes = await probeAll();
-  const availableProviders = probes.filter((p) => p.available);
-  const choices: MenuChoice[] = [
-    { value: "test-terminal", label: "Run tests · show summary in terminal" },
-    { value: "test-html", label: "Run tests · generate HTML report" },
-    { value: "test-md", label: "Run tests · generate Markdown report" },
-    { value: "scan-only", label: "Scan only (skip running tests)" },
-  ];
-  if (availableProviders.length) {
-    const names = availableProviders.map((p) => providerLabel(p.provider)).join(", ");
-    choices.push({
-      value: "ai",
-      label: "AI analysis · summary + suggestions",
-      hint: names,
-    });
-  } else {
-    choices.push({
-      value: "ai",
-      label: "AI analysis (no provider configured)",
-      hint: "set OPENAI_API_KEY / ANTHROPIC_API_KEY or run `ollama serve`",
-    });
-  }
-  choices.push({ value: "exit", label: "Exit" });
-
-  const action = await p.select({
-    message: "What would you like to do?",
-    options: choices.map((c) => ({ value: c.value, label: c.label, hint: c.hint })),
-  });
-  cancelIfNeeded(p, action);
-
-  if (action === "exit") {
-    p.outro("Bye.");
-    return;
-  }
-
-  if (action === "ai" && !availableProviders.length) {
-    p.log.warn("No AI provider is configured.");
-    p.log.message("Configure one of:");
-    p.log.message("  • OPENAI_API_KEY=…   (for OpenAI)");
-    p.log.message("  • ANTHROPIC_API_KEY=…  (for Anthropic)");
-    p.log.message("  • `ollama serve` + `ollama pull llama3.2`  (for local Ollama)");
-    p.outro("Cancelled.");
-    return;
-  }
-
-  let aiProvider: Provider | undefined;
-  let aiModel: string | undefined;
-  if (action === "ai") {
-    let chosen: ProviderProbe;
-    if (availableProviders.length === 1) {
-      chosen = availableProviders[0];
+    const choices: MenuChoice[] = [
+      { value: "test-terminal", label: "Run tests · show summary in terminal" },
+      { value: "test-html", label: "Run tests · generate HTML report" },
+      { value: "test-md", label: "Run tests · generate Markdown report" },
+      { value: "scan-only", label: "Scan only (skip running tests)" },
+    ];
+    if (availableProviders.length) {
+      const names = availableProviders.map((pp) => providerLabel(pp.provider)).join(", ");
+      choices.push({
+        value: "ai",
+        label: "AI analysis · summary + suggestions",
+        hint: names,
+      });
     } else {
-      const providerChoice = await p.select({
-        message: "Choose an AI provider",
-        options: availableProviders.map((pp) => ({
-          value: pp.provider,
-          label: providerLabel(pp.provider),
-          hint: pp.detail,
-        })),
+      choices.push({
+        value: "ai",
+        label: "AI analysis (no provider configured)",
+        hint: "set OPENAI_API_KEY / ANTHROPIC_API_KEY or run `ollama serve`",
       });
-      cancelIfNeeded(p, providerChoice);
-      chosen = availableProviders.find((pp) => pp.provider === providerChoice)!;
     }
-    aiProvider = chosen.provider;
-    const def = pickDefaultModel(chosen.provider, chosen.models);
-    const modelChoice = await p.select({
-      message: `Choose a ${providerLabel(chosen.provider)} model`,
-      initialValue: def,
-      options: chosen.models.map((m) => ({ value: m, label: m })),
+    choices.push({
+      value: "change-repo",
+      label: "Change repository path",
+      hint: repoPath,
     });
-    cancelIfNeeded(p, modelChoice);
-    aiModel = String(modelChoice);
-  }
+    choices.push({
+      value: "change-cmd",
+      label: "Change test command",
+      hint: testCmd || "(none)",
+    });
+    choices.push({ value: "exit", label: "Exit" });
 
-  const runTests = testCmd.length > 0 && action !== "scan-only";
+    const action = (await p.select({
+      message: "What would you like to do?",
+      options: choices.map((c) => ({ value: c.value, label: c.label, hint: c.hint })),
+    })) as ActionValue | symbol;
+    cancelIfNeeded(p, action);
 
-  let testResult: { code: number; durationMs: number; stdout: string; stderr: string } | null = null;
-  if (runTests) {
-    const spin = p.spinner();
-    spin.start(`Running: ${testCmd}`);
-    const ctrl = new AbortController();
-    const onSigint = () => ctrl.abort();
-    process.once("SIGINT", onSigint);
-    try {
-      const result = await runTestCommand(testCmd, {
-        cwd: repoPath,
-        signal: ctrl.signal,
-        onChunk: (chunk) => {
-          const tail = lastLines(chunk, 1);
-          if (tail) spin.message(`Running: ${testCmd} — ${tail.slice(0, 80)}`);
-        },
-      });
-      testResult = result;
-      if (result.signaled || ctrl.signal.aborted) {
-        spin.stop("Test run cancelled.", 1);
-        p.outro("Cancelled.");
-        return;
-      }
-      spin.stop(
-        result.code === 0
-          ? `Tests passed in ${(result.durationMs / 1000).toFixed(1)}s`
-          : `Tests exited with code ${result.code} in ${(result.durationMs / 1000).toFixed(1)}s`,
-        result.code === 0 ? 0 : 1,
-      );
-    } finally {
-      process.removeListener("SIGINT", onSigint);
+    if (action === "exit") {
+      p.outro("Bye.");
+      return;
     }
-  }
 
-  const scanSpin = p.spinner();
-  scanSpin.start("Scanning repository…");
-  const stats = scanRepo(repoPath);
-  const framework = detectFramework(repoPath);
-  let coverage: CoverageReport | null = null;
-  try {
-    coverage = findCoverage(repoPath);
-  } catch {
-    coverage = null;
-  }
-  scanSpin.stop(
-    coverage
-      ? `Scan complete · ${framework} · lines ${pct(coverage.total.lines.pct)}`
-      : `Scan complete · ${framework} · no coverage data found`,
-  );
-
-  let ai: AiSummary | null = null;
-  if (action === "ai" && aiProvider && aiModel) {
-    const aiSpin = p.spinner();
-    const label = `${providerLabel(aiProvider)} · ${aiModel}`;
-    aiSpin.start(`Asking ${label}…`);
-    let lastShown = "";
-    const ctrl = new AbortController();
-    const onSigint = () => ctrl.abort();
-    process.once("SIGINT", onSigint);
-    try {
-      const prompt = buildPrompt({
-        repoName: stats.rootName,
-        framework,
-        totalFiles: stats.totalFiles,
-        totalLines: stats.totalLines,
-        coverage,
-        testStdoutTail: testResult ? lastLines(testResult.stdout || testResult.stderr, 8) : undefined,
-      });
-      const text = await summarize({
-        provider: aiProvider,
-        model: aiModel,
-        prompt,
-        signal: ctrl.signal,
-        onDelta: (delta) => {
-          lastShown = (lastShown + delta).slice(-60);
-          aiSpin.message(`Asking ${label} — ${lastShown.replace(/\s+/g, " ")}`);
-        },
-      });
-      aiSpin.stop(`AI summary ready (${text.length} chars)`);
-      ai = { model: `${providerLabel(aiProvider)} · ${aiModel}`, text };
-    } catch (err) {
-      aiSpin.stop(`AI summary failed: ${(err as Error).message}`, 1);
-      const proceed = await p.confirm({
-        message: "Generate the HTML report without AI analysis?",
-        initialValue: true,
-      });
-      cancelIfNeeded(p, proceed);
-      if (!proceed) {
-        p.outro("Cancelled.");
-        return;
-      }
-    } finally {
-      process.removeListener("SIGINT", onSigint);
+    if (action === "change-repo") {
+      repoPath = await promptRepoPath(p, repoPath);
+      testCmd = await promptTestCmd(p, repoPath, pkgTestScript(repoPath) || testCmd);
+      continue;
     }
+
+    if (action === "change-cmd") {
+      testCmd = await promptTestCmd(p, repoPath, testCmd);
+      continue;
+    }
+
+    if (action === "ai" && !availableProviders.length) {
+      p.log.warn("No AI provider is configured.");
+      p.log.message("Configure one of:");
+      p.log.message("  • OPENAI_API_KEY=…   (for OpenAI)");
+      p.log.message("  • ANTHROPIC_API_KEY=…  (for Anthropic)");
+      p.log.message("  • `ollama serve` + `ollama pull llama3.2`  (for local Ollama)");
+      continue;
+    }
+
+    let aiProvider: Provider | undefined;
+    let aiModel: string | undefined;
+    if (action === "ai") {
+      let chosen: ProviderProbe;
+      if (availableProviders.length === 1) {
+        chosen = availableProviders[0];
+      } else {
+        const providerChoice = await p.select({
+          message: "Choose an AI provider",
+          options: availableProviders.map((pp) => ({
+            value: pp.provider,
+            label: providerLabel(pp.provider),
+            hint: pp.detail,
+          })),
+        });
+        cancelIfNeeded(p, providerChoice);
+        chosen = availableProviders.find((pp) => pp.provider === providerChoice)!;
+      }
+      aiProvider = chosen.provider;
+      const def = pickDefaultModel(chosen.provider, chosen.models);
+      const modelChoice = await p.select({
+        message: `Choose a ${providerLabel(chosen.provider)} model`,
+        initialValue: def,
+        options: chosen.models.map((m) => ({ value: m, label: m })),
+      });
+      cancelIfNeeded(p, modelChoice);
+      aiModel = String(modelChoice);
+    }
+
+    const runTests = testCmd.length > 0 && action !== "scan-only";
+
+    let testResult: { code: number; durationMs: number; stdout: string; stderr: string } | null = null;
+    if (runTests) {
+      const spin = p.spinner();
+      spin.start(`Running: ${testCmd}`);
+      const ctrl = new AbortController();
+      const onSigint = () => ctrl.abort();
+      process.once("SIGINT", onSigint);
+      try {
+        const result = await runTestCommand(testCmd, {
+          cwd: repoPath,
+          signal: ctrl.signal,
+          onChunk: (chunk) => {
+            const tail = lastLines(chunk, 1);
+            if (tail) spin.message(`Running: ${testCmd} — ${tail.slice(0, 80)}`);
+          },
+        });
+        testResult = result;
+        if (result.signaled || ctrl.signal.aborted) {
+          spin.stop("Test run cancelled.", 1);
+          continue;
+        }
+        spin.stop(
+          result.code === 0
+            ? `Tests passed in ${(result.durationMs / 1000).toFixed(1)}s`
+            : `Tests exited with code ${result.code} in ${(result.durationMs / 1000).toFixed(1)}s`,
+          result.code === 0 ? 0 : 1,
+        );
+      } finally {
+        process.removeListener("SIGINT", onSigint);
+      }
+    }
+
+    const scanSpin = p.spinner();
+    scanSpin.start("Scanning repository…");
+    const stats = scanRepo(repoPath);
+    const framework = detectFramework(repoPath);
+    let coverage: CoverageReport | null = null;
+    try {
+      coverage = findCoverage(repoPath);
+    } catch {
+      coverage = null;
+    }
+    scanSpin.stop(
+      coverage
+        ? `Scan complete · ${framework} · lines ${pct(coverage.total.lines.pct)}`
+        : `Scan complete · ${framework} · no coverage data found`,
+    );
+
+    let ai: AiSummary | null = null;
+    if (action === "ai" && aiProvider && aiModel) {
+      const aiSpin = p.spinner();
+      const label = `${providerLabel(aiProvider)} · ${aiModel}`;
+      aiSpin.start(`Asking ${label}…`);
+      let lastShown = "";
+      const ctrl = new AbortController();
+      const onSigint = () => ctrl.abort();
+      process.once("SIGINT", onSigint);
+      let aiFailed = false;
+      try {
+        const prompt = buildPrompt({
+          repoName: stats.rootName,
+          framework,
+          totalFiles: stats.totalFiles,
+          totalLines: stats.totalLines,
+          coverage,
+          testStdoutTail: testResult ? lastLines(testResult.stdout || testResult.stderr, 8) : undefined,
+        });
+        const text = await summarize({
+          provider: aiProvider,
+          model: aiModel,
+          prompt,
+          signal: ctrl.signal,
+          onDelta: (delta) => {
+            lastShown = (lastShown + delta).slice(-60);
+            aiSpin.message(`Asking ${label} — ${lastShown.replace(/\s+/g, " ")}`);
+          },
+        });
+        aiSpin.stop(`AI summary ready (${text.length} chars)`);
+        ai = { model: `${providerLabel(aiProvider)} · ${aiModel}`, text };
+      } catch (err) {
+        aiFailed = true;
+        aiSpin.stop(`AI summary failed: ${(err as Error).message}`, 1);
+      } finally {
+        process.removeListener("SIGINT", onSigint);
+      }
+      if (aiFailed) {
+        const proceed = await p.confirm({
+          message: "Generate the HTML report without AI analysis?",
+          initialValue: true,
+        });
+        cancelIfNeeded(p, proceed);
+        if (!proceed) continue;
+      }
+    }
+
+    if (action === "test-terminal") {
+      p.note(formatTerminalSummary({ framework, stats, coverage, testResult }), "Result");
+      continue;
+    }
+
+    if (action === "scan-only") {
+      p.note(formatTerminalSummary({ framework, stats, coverage, testResult: null }), "Scan");
+      continue;
+    }
+
+    if (action === "ai") {
+      if (ai) {
+        p.note(ai.text, `AI Analysis · ${ai.model}`);
+      }
+      continue;
+    }
+
+    const format: "html" | "md" = action === "test-md" ? "md" : "html";
+    const outDir = downloadsDir();
+    const ext = format === "md" ? "md" : "html";
+    const base = `lumen-${safeSlug(stats.rootName)}-${timestamp()}`;
+    const outFile = path.join(outDir, `${base}.${ext}`);
+
+    const content =
+      format === "md"
+        ? renderMarkdown(stats, { coverage, aiSummary: ai })
+        : renderReport(stats, { coverage, aiSummary: ai });
+
+    fs.mkdirSync(outDir, { recursive: true });
+    fs.writeFileSync(outFile, content, "utf8");
+
+    p.note(
+      [
+        `File: ${outFile}`,
+        process.platform === "win32" ? `URL : ${fileUrl(outFile)}` : null,
+        ai ? `AI  : ${ai.model}` : null,
+        coverage ? `Cov : lines ${pct(coverage.total.lines.pct)} · functions ${pct(coverage.total.functions.pct)} · branches ${pct(coverage.total.branches.pct)}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      "Report written",
+    );
   }
-
-  if (action === "test-terminal") {
-    p.note(formatTerminalSummary({ framework, stats, coverage, testResult }), "Result");
-    p.outro("Done.");
-    return;
-  }
-
-  if (action === "scan-only") {
-    p.note(formatTerminalSummary({ framework, stats, coverage, testResult: null }), "Scan");
-    p.outro("Done.");
-    return;
-  }
-
-  const format: "html" | "md" = action === "test-md" ? "md" : "html";
-  const outDir = downloadsDir();
-  const ext = format === "md" ? "md" : "html";
-  const base = `lumen-${safeSlug(stats.rootName)}-${timestamp()}`;
-  const outFile = path.join(outDir, `${base}.${ext}`);
-
-  const content =
-    format === "md"
-      ? renderMarkdown(stats, { coverage, aiSummary: ai })
-      : renderReport(stats, { coverage, aiSummary: ai });
-
-  fs.mkdirSync(outDir, { recursive: true });
-  fs.writeFileSync(outFile, content, "utf8");
-
-  p.note(
-    [
-      `File: ${outFile}`,
-      process.platform === "win32" ? `URL : ${fileUrl(outFile)}` : null,
-      ai ? `AI  : ${ai.model}` : null,
-      coverage ? `Cov : lines ${pct(coverage.total.lines.pct)} · functions ${pct(coverage.total.functions.pct)} · branches ${pct(coverage.total.branches.pct)}` : null,
-    ]
-      .filter(Boolean)
-      .join("\n"),
-    "Report written",
-  );
-
-  p.outro("Done.");
 }
 
 function formatTerminalSummary(args: {
