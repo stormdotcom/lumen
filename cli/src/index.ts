@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import * as fs from "fs";
-import * as os from "os";
 import * as path from "path";
 import { Command, Option } from "commander";
 import {
@@ -12,37 +11,10 @@ import {
   CoverageReport,
 } from "@ajmal_n/lumen-core";
 
-type Format = "html" | "markdown";
+import { downloadsDir } from "./paths";
+import { safeSlug, timestamp, normalizeFormat, parseThreshold, Format } from "./util";
 
-function defaultOutputDir(): string {
-  return path.join(os.homedir(), "Downloads");
-}
-
-function safeSlug(s: string): string {
-  return s.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "repo";
-}
-
-function timestamp(): string {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
-}
-
-function normalizeFormat(input: string): Format {
-  const v = input.toLowerCase();
-  if (v === "md" || v === "markdown") return "markdown";
-  if (v === "html" || v === "htm") return "html";
-  throw new Error(`Unknown format: ${input}. Use 'html' or 'markdown'.`);
-}
-
-function parseThreshold(raw: string | undefined): number | undefined {
-  if (raw === undefined) return undefined;
-  const n = Number(raw);
-  if (!Number.isFinite(n) || n < 0 || n > 100) {
-    throw new Error(`Invalid --threshold: ${raw}. Expected a number 0-100.`);
-  }
-  return n;
-}
+const VERSION = "0.4.0";
 
 const program = new Command();
 
@@ -51,14 +23,14 @@ program
   .description(
     "Scan a repository and produce a self-contained insight report — with optional test-coverage breakdown.",
   )
-  .version("0.3.0")
+  .version(VERSION)
   .argument("[path]", "Path to the repository to scan", ".")
   .addOption(
     new Option("-f, --format <fmt>", "Output format")
       .choices(["html", "markdown", "md"])
       .default("html"),
   )
-  .option("-o, --out <dir>", "Output directory for the report", defaultOutputDir())
+  .option("-o, --out <dir>", "Output directory for the report", downloadsDir())
   .option("-n, --name <name>", "Override the report filename (without extension)")
   .option("--print-path", "Print only the path to the generated report (machine-readable)")
   .option(
@@ -160,4 +132,16 @@ program
     },
   );
 
-program.parse(process.argv);
+const noArgs = process.argv.length <= 2;
+const isInteractive = !!process.stdout.isTTY && !!process.stdin.isTTY;
+
+if (noArgs && isInteractive) {
+  import("./menu")
+    .then((m) => m.runMenu())
+    .catch((err) => {
+      console.error(`lumen: ${(err as Error).message}`);
+      process.exit(1);
+    });
+} else {
+  program.parse(process.argv);
+}

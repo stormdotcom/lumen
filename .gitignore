@@ -11,3 +11,5 @@ release/
 
 # Personal notes — not for the public repo
 PUBLISHING.md
+
+.claude/*

@@ -26,6 +26,7 @@ function coverageEmoji(pct: number, threshold?: number): string {
 export interface RenderMarkdownOptions {
   coverage?: CoverageReport | null;
   threshold?: number;
+  aiSummary?: { model: string; text: string } | null;
 }
 
 export function renderMarkdown(stats: RepoStats, options: RenderMarkdownOptions = {}): string {
@@ -145,6 +146,21 @@ export function renderMarkdown(stats: RepoStats, options: RenderMarkdownOptions 
       lines.push(`> Sources: ${cov.sources.map((s) => `\`${escapeCell(s)}\``).join(", ")}`);
       lines.push("");
     }
+  }
+
+  if (options.aiSummary && options.aiSummary.text.trim()) {
+    lines.push(`## AI Analysis — ${options.aiSummary.model}`);
+    lines.push("");
+    for (const para of options.aiSummary.text.split(/\n{2,}/)) {
+      const trimmed = para.trim();
+      if (!trimmed) continue;
+      for (const subline of trimmed.split(/\n/)) {
+        lines.push(`> ${subline}`);
+      }
+      lines.push(">");
+    }
+    if (lines[lines.length - 1] === ">") lines.pop();
+    lines.push("");
   }
 
   lines.push("---");

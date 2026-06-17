@@ -174,9 +174,34 @@ function coverageRow(f: FileCoverage, threshold?: number): string {
   </tr>`;
 }
 
+export interface AiSummary {
+  model: string;
+  text: string;
+}
+
 export interface RenderReportOptions {
   coverage?: CoverageReport | null;
   threshold?: number;
+  aiSummary?: AiSummary | null;
+}
+
+function aiSummarySection(ai: AiSummary): string {
+  const paragraphs = ai.text
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => `<p>${esc(p).replace(/\n/g, "<br>")}</p>`)
+    .join("");
+  return `
+  <section class="panel ai-panel" style="margin-bottom:20px">
+    <div class="panel-head">
+      <span>AI Analysis <span class="dim">· ${esc(ai.model)}</span></span>
+      <span class="dim">local · ollama</span>
+    </div>
+    <div class="panel-body tight" style="padding:18px 22px; font-size:14px; line-height:1.65; color:var(--text-soft)">
+      ${paragraphs}
+    </div>
+  </section>`;
 }
 
 export function renderReport(stats: RepoStats, options: RenderReportOptions = {}): string {
@@ -238,6 +263,8 @@ export function renderReport(stats: RepoStats, options: RenderReportOptions = {}
   const coverageHtml = options.coverage
     ? coverageCards(options.coverage, options.threshold) + coverageTable(options.coverage, options.threshold)
     : "";
+
+  const aiHtml = options.aiSummary ? aiSummarySection(options.aiSummary) : "";
 
   return `<!doctype html>
 <html lang="en">
@@ -429,6 +456,7 @@ export function renderReport(stats: RepoStats, options: RenderReportOptions = {}
     ${options.coverage ? '<div class="tab">Coverage</div>' : ""}
   </div>
 
+  ${aiHtml}
   ${coverageHtml}
 
   <div class="grid-stats">

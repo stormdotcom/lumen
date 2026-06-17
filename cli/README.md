@@ -27,6 +27,52 @@ npx @ajmal_n/lumen-cli .
 lumen [path] [options]
 ```
 
+### Interactive mode
+
+Run `lumen` with no arguments from any directory and you get a guided menu:
+
+```bash
+lumen
+```
+
+The menu lets you:
+
+1. Pick the repo path (defaults to the current directory).
+2. Run a **test command** of your choice inside that repo (defaults to `npm test`
+   if a `test` script exists). Press Enter on a blank command to skip.
+3. Pick what to do with the result:
+   - **Run tests · show summary in terminal** — fast feedback, no files written.
+   - **Run tests · generate HTML report** — written to your OS Downloads folder.
+   - **Run tests · generate Markdown report** — same location, GitHub-flavored.
+   - **Scan only** — skip the test run, just parse what's already on disk.
+   - **AI analysis via Ollama** — if a local Ollama is running, get a summary
+     and three concrete suggestions embedded in the HTML report.
+
+Press **Ctrl+C** at any prompt to exit cleanly. The menu only appears in
+interactive terminals — piped or CI invocations fall through to the flag-driven
+mode below.
+
+### AI analysis with local Ollama
+
+Lumen can ask a model running on your machine for a plain-language summary
+and three prioritized suggestions, then bake the result into the HTML / Markdown
+report.
+
+```bash
+# one-time setup
+ollama serve &
+ollama pull llama3.2
+```
+
+Then start the menu (`lumen`) and pick **AI analysis via Ollama**. Lumen sends
+only coverage metrics and the names of the worst-covered files — no source code
+is uploaded anywhere. Override endpoint / model via env:
+
+| Env | Default |
+| --- | --- |
+| `LUMEN_OLLAMA_URL` | `http://localhost:11434` |
+| `LUMEN_OLLAMA_MODEL` | first installed `llama3.x` / `qwen2.5` / `mistral` |
+
 ### Options
 
 | Flag | Description | Default |

@@ -1,7 +1,7 @@
 {
   "name": "@ajmal_n/lumen-cli",
-  "version": "0.3.0",
-  "description": "Scan any repo and emit a self-contained HTML or Markdown report — with test-coverage breakdown for Jest, Vitest, Nx, Jasmine, Karma, Mocha, and more.",
+  "version": "0.4.0",
+  "description": "Scan any repo and emit a self-contained HTML or Markdown report — with test-coverage breakdown, an interactive menu, and optional local-Ollama AI analysis.",
   "license": "MIT",
   "bin": {
     "lumen": "dist/index.js"
@@ -17,10 +17,12 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\""
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "prepublishOnly": "npm run clean && npm run build"
   },
   "dependencies": {
-    "@ajmal_n/lumen-core": "0.3.0",
+    "@ajmal_n/lumen-core": "0.4.0",
+    "@clack/prompts": "^0.11.0",
     "commander": "^12.1.0"
   },
   "devDependencies": {
