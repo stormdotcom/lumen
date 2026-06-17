@@ -29,7 +29,7 @@ npx @ajmal_n/lumen-cli .
 ```
 
 A sample HTML report for this repository is included here:
-<a href="https://rainbow-pudding-9f34d4.netlify.app/" target="_blank" rel="noopener noreferrer">Open the sample HTML report</a>.
+<a href="https://rainbow-pudding-9f34d4.netlify.app/" target="_blank" rel="noopener noreferrer">Open the sample HTML report in a new window</a>.
 
 With test coverage (after `jest --coverage`, `vitest run --coverage`,
 `nx test --coverage`, or `nyc mocha`):
