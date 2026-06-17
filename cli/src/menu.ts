@@ -13,7 +13,15 @@ import {
 import { downloadsDir, fileUrl } from "./paths";
 import { runTestCommand, lastLines } from "./runner";
 import { safeSlug, timestamp } from "./util";
-import { probeOllama, summarize, buildPrompt, pickDefaultModel } from "./ollama";
+import {
+  probeAll,
+  summarize,
+  buildPrompt,
+  pickDefaultModel,
+  providerLabel,
+  Provider,
+  ProviderProbe,
+} from "./ai";
 
 type Clack = typeof import("@clack/prompts");
 
@@ -90,24 +98,26 @@ export async function runMenu(): Promise<void> {
   cancelIfNeeded(p, cmdRaw);
   const testCmd = String(cmdRaw || "").trim();
 
-  const ollama = await probeOllama();
+  const probes = await probeAll();
+  const availableProviders = probes.filter((p) => p.available);
   const choices: MenuChoice[] = [
     { value: "test-terminal", label: "Run tests · show summary in terminal" },
     { value: "test-html", label: "Run tests · generate HTML report" },
     { value: "test-md", label: "Run tests · generate Markdown report" },
     { value: "scan-only", label: "Scan only (skip running tests)" },
   ];
-  if (ollama.available) {
+  if (availableProviders.length) {
+    const names = availableProviders.map((p) => providerLabel(p.provider)).join(", ");
     choices.push({
       value: "ai",
-      label: `AI analysis via Ollama (${ollama.models.length} models)`,
-      hint: "summary + suggestions, written to HTML",
+      label: "AI analysis · summary + suggestions",
+      hint: names,
     });
   } else {
     choices.push({
       value: "ai",
-      label: "AI analysis via Ollama (not running)",
-      hint: "start `ollama serve` to enable",
+      label: "AI analysis (no provider configured)",
+      hint: "set OPENAI_API_KEY / ANTHROPIC_API_KEY or run `ollama serve`",
     });
   }
   choices.push({ value: "exit", label: "Exit" });
@@ -123,20 +133,40 @@ export async function runMenu(): Promise<void> {
     return;
   }
 
-  if (action === "ai" && !ollama.available) {
-    p.log.warn(`Ollama is not reachable at ${ollama.url}.`);
-    p.log.message("Start it with `ollama serve` then pull a model (e.g. `ollama pull llama3.2`).");
+  if (action === "ai" && !availableProviders.length) {
+    p.log.warn("No AI provider is configured.");
+    p.log.message("Configure one of:");
+    p.log.message("  • OPENAI_API_KEY=…   (for OpenAI)");
+    p.log.message("  • ANTHROPIC_API_KEY=…  (for Anthropic)");
+    p.log.message("  • `ollama serve` + `ollama pull llama3.2`  (for local Ollama)");
     p.outro("Cancelled.");
     return;
   }
 
+  let aiProvider: Provider | undefined;
   let aiModel: string | undefined;
   if (action === "ai") {
-    const def = pickDefaultModel(ollama.models);
+    let chosen: ProviderProbe;
+    if (availableProviders.length === 1) {
+      chosen = availableProviders[0];
+    } else {
+      const providerChoice = await p.select({
+        message: "Choose an AI provider",
+        options: availableProviders.map((pp) => ({
+          value: pp.provider,
+          label: providerLabel(pp.provider),
+          hint: pp.detail,
+        })),
+      });
+      cancelIfNeeded(p, providerChoice);
+      chosen = availableProviders.find((pp) => pp.provider === providerChoice)!;
+    }
+    aiProvider = chosen.provider;
+    const def = pickDefaultModel(chosen.provider, chosen.models);
     const modelChoice = await p.select({
-      message: "Choose an Ollama model",
+      message: `Choose a ${providerLabel(chosen.provider)} model`,
       initialValue: def,
-      options: ollama.models.map((m) => ({ value: m, label: m })),
+      options: chosen.models.map((m) => ({ value: m, label: m })),
     });
     cancelIfNeeded(p, modelChoice);
     aiModel = String(modelChoice);
@@ -194,9 +224,10 @@ export async function runMenu(): Promise<void> {
   );
 
   let ai: AiSummary | null = null;
-  if (action === "ai" && aiModel) {
+  if (action === "ai" && aiProvider && aiModel) {
     const aiSpin = p.spinner();
-    aiSpin.start(`Asking ${aiModel}…`);
+    const label = `${providerLabel(aiProvider)} · ${aiModel}`;
+    aiSpin.start(`Asking ${label}…`);
     let lastShown = "";
     const ctrl = new AbortController();
     const onSigint = () => ctrl.abort();
@@ -210,16 +241,18 @@ export async function runMenu(): Promise<void> {
         coverage,
         testStdoutTail: testResult ? lastLines(testResult.stdout || testResult.stderr, 8) : undefined,
       });
-      const text = await summarize(prompt, {
+      const text = await summarize({
+        provider: aiProvider,
         model: aiModel,
+        prompt,
         signal: ctrl.signal,
         onDelta: (delta) => {
           lastShown = (lastShown + delta).slice(-60);
-          aiSpin.message(`Asking ${aiModel} — ${lastShown.replace(/\s+/g, " ")}`);
+          aiSpin.message(`Asking ${label} — ${lastShown.replace(/\s+/g, " ")}`);
         },
       });
       aiSpin.stop(`AI summary ready (${text.length} chars)`);
-      ai = { model: aiModel, text };
+      ai = { model: `${providerLabel(aiProvider)} · ${aiModel}`, text };
     } catch (err) {
       aiSpin.stop(`AI summary failed: ${(err as Error).message}`, 1);
       const proceed = await p.confirm({

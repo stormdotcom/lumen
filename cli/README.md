@@ -52,26 +52,33 @@ Press **Ctrl+C** at any prompt to exit cleanly. The menu only appears in
 interactive terminals — piped or CI invocations fall through to the flag-driven
 mode below.
 
-### AI analysis with local Ollama
+### AI analysis
 
-Lumen can ask a model running on your machine for a plain-language summary
-and three prioritized suggestions, then bake the result into the HTML / Markdown
-report.
+Lumen can ask an LLM for a plain-language summary and three prioritized
+suggestions, then bake the result into the HTML / Markdown report. It supports
+three providers — pick whichever is configured (the menu only shows ones it can
+reach):
 
-```bash
-# one-time setup
-ollama serve &
-ollama pull llama3.2
-```
+| Provider | How to enable |
+| --- | --- |
+| **Ollama** (local, free) | `ollama serve` + `ollama pull llama3.2` |
+| **OpenAI** | `export OPENAI_API_KEY=sk-…` |
+| **Anthropic** | `export ANTHROPIC_API_KEY=sk-ant-…` |
 
-Then start the menu (`lumen`) and pick **AI analysis via Ollama**. Lumen sends
-only coverage metrics and the names of the worst-covered files — no source code
-is uploaded anywhere. Override endpoint / model via env:
+Then start the menu (`lumen`) and pick **AI analysis**. Lumen sends only
+coverage metrics and the names of the worst-covered files — no source code is
+uploaded.
+
+Override endpoints / models via env:
 
 | Env | Default |
 | --- | --- |
 | `LUMEN_OLLAMA_URL` | `http://localhost:11434` |
 | `LUMEN_OLLAMA_MODEL` | first installed `llama3.x` / `qwen2.5` / `mistral` |
+| `OPENAI_BASE_URL` | `https://api.openai.com` |
+| `LUMEN_OPENAI_MODEL` | `gpt-4o-mini` |
+| `ANTHROPIC_BASE_URL` | `https://api.anthropic.com` |
+| `LUMEN_ANTHROPIC_MODEL` | `claude-haiku-4-5-20251001` |
 
 ### Options
 
