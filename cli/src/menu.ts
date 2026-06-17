@@ -369,6 +369,10 @@ async function runIteration(p: Clack, state: IterState): Promise<void> {
       ? renderMarkdown(stats, { coverage, aiSummary: ai })
       : renderReport(stats, { coverage, aiSummary: ai });
 
+  if (format === "md") {
+    process.stdout.write("\n" + content + "\n");
+  }
+
   try {
     fs.mkdirSync(outDir, { recursive: true });
     fs.writeFileSync(outFile, content, "utf8");
