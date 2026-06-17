@@ -132,6 +132,16 @@ program
     },
   );
 
+process.on("uncaughtException", (err) => {
+  process.stderr.write(`\nlumen: unexpected error — ${(err as Error).message}\n`);
+  process.exit(1);
+});
+process.on("unhandledRejection", (reason) => {
+  const msg = reason instanceof Error ? reason.message : String(reason);
+  process.stderr.write(`\nlumen: unhandled rejection — ${msg}\n`);
+  process.exit(1);
+});
+
 const noArgs = process.argv.length <= 2;
 const isInteractive = !!process.stdout.isTTY && !!process.stdin.isTTY;
 

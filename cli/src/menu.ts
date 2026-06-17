@@ -108,6 +108,28 @@ export async function runMenu(): Promise<void> {
   let testCmd = await promptTestCmd(p, repoPath);
 
   while (true) {
+    const outcome = await runIteration(p, repoPath, testCmd);
+    if (outcome.exit) {
+      p.outro("Bye.");
+      return;
+    }
+    if (outcome.repoPath !== undefined) repoPath = outcome.repoPath;
+    if (outcome.testCmd !== undefined) testCmd = outcome.testCmd;
+  }
+}
+
+interface IterationOutcome {
+  exit: boolean;
+  repoPath?: string;
+  testCmd?: string;
+}
+
+async function runIteration(
+  p: Clack,
+  repoPath: string,
+  testCmd: string,
+): Promise<IterationOutcome> {
+  try {
     const probes = await probeAll();
     const availableProviders = probes.filter((pp) => pp.available);
 
