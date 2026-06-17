@@ -17,7 +17,18 @@
     </div>
     <div class="topbar-actions">
       <button id="btn-open" class="btn btn-primary">Open Repository…</button>
-      <button id="btn-export" class="btn" disabled>Export HTML</button>
+      <div class="dropdown" id="recent-wrap">
+        <button id="btn-recent" class="btn" disabled>Recent ▾</button>
+        <div class="dropdown-menu hidden" id="recent-menu"></div>
+      </div>
+      <div class="dropdown" id="export-wrap">
+        <button id="btn-export" class="btn" disabled>Export ▾</button>
+        <div class="dropdown-menu hidden" id="export-menu">
+          <button class="menu-item" data-fmt="html">HTML</button>
+          <button class="menu-item" data-fmt="markdown">Markdown</button>
+        </div>
+      </div>
+      <button id="btn-settings" class="btn icon" title="Settings">⚙</button>
     </div>
   </header>
 
@@ -26,15 +37,92 @@
       <div class="empty-card">
         <div class="empty-icon">📂</div>
         <h2>No repository selected</h2>
-        <p>Pick a folder to scan. Lumen will read its file tree and build an
-           interactive insight report — file types, sizes, lines of code, and
-           the largest files.</p>
+        <p>Pick a folder, or drop one into this window. Lumen will scan its file
+           tree, detect your test framework, parse coverage if available, and
+           build an interactive report.</p>
         <button id="btn-open-empty" class="btn btn-primary">Open Repository…</button>
+        <div class="drop-hint">…or drop a folder anywhere on this window.</div>
       </div>
     </section>
 
-    <section id="report" class="report hidden"></section>
+    <section id="workspace" class="workspace hidden">
+      <div id="report" class="report"></div>
+
+      <aside id="sidebar" class="sidebar">
+        <div class="side-panel">
+          <div class="side-head">
+            <span>Tests</span>
+            <span class="dim" id="test-framework">—</span>
+          </div>
+          <div class="side-body">
+            <label class="lbl">Command</label>
+            <input id="test-cmd" type="text" class="input" placeholder="npm test">
+            <div class="row-actions">
+              <button id="btn-test-run" class="btn btn-primary">Run</button>
+              <button id="btn-test-cancel" class="btn" disabled>Cancel</button>
+              <button id="btn-test-clear" class="btn">Clear</button>
+            </div>
+            <div class="console" id="test-console"></div>
+            <div class="row-actions">
+              <span class="dim" id="test-status">idle</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="side-panel">
+          <div class="side-head">
+            <span>AI Analysis</span>
+            <span class="dim" id="ai-status">—</span>
+          </div>
+          <div class="side-body">
+            <div class="row">
+              <select id="ai-provider" class="select"></select>
+              <select id="ai-model" class="select"></select>
+            </div>
+            <div class="row-actions">
+              <button id="btn-ai-run" class="btn btn-primary" disabled>Generate summary</button>
+              <button id="btn-ai-cancel" class="btn" disabled>Cancel</button>
+            </div>
+            <div class="ai-out" id="ai-out"></div>
+          </div>
+        </div>
+      </aside>
+    </section>
   </main>
+
+  <div id="settings-overlay" class="overlay hidden">
+    <div class="modal">
+      <div class="modal-head">
+        <h3>Settings</h3>
+        <button id="settings-close" class="btn icon">✕</button>
+      </div>
+      <div class="modal-body">
+        <label class="lbl">OpenAI API Key</label>
+        <input id="set-openai" type="password" class="input" placeholder="sk-…" autocomplete="off">
+
+        <label class="lbl">Anthropic API Key</label>
+        <input id="set-anthropic" type="password" class="input" placeholder="sk-ant-…" autocomplete="off">
+
+        <label class="lbl">Ollama URL</label>
+        <input id="set-ollama" type="text" class="input" placeholder="http://localhost:11434">
+
+        <label class="lbl">Default test command</label>
+        <input id="set-test" type="text" class="input" placeholder="npm test">
+
+        <p class="hint">Keys are stored unencrypted in your user data directory. They never leave your machine except as Authorization headers to the provider you select.</p>
+      </div>
+      <div class="modal-foot">
+        <button id="settings-save" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="dnd-overlay" class="dnd-overlay hidden">
+    <div class="dnd-card">
+      <div class="dnd-icon">📂</div>
+      <div>Drop a folder to scan</div>
+    </div>
+  </div>
 
   <div id="toast" class="toast hidden"></div>
 
