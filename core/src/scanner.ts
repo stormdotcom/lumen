@@ -84,14 +84,51 @@ function countLines(filePath: string, size: number): number {
   }
 }
 
+const MAX_DEPTH = 30;
+const TOP_LARGEST = 15;
+
+function insertTop(top: FileEntry[], entry: FileEntry, limit: number) {
+  if (top.length < limit) {
+    top.push(entry);
+    if (top.length === limit) top.sort((a, b) => a.size - b.size);
+    return;
+  }
+  if (entry.size <= top[0].size) return;
+  top[0] = entry;
+  let i = 0;
+  while (i + 1 < top.length && top[i].size > top[i + 1].size) {
+    const tmp = top[i];
+    top[i] = top[i + 1];
+    top[i + 1] = tmp;
+    i++;
+  }
+}
+
 export function scanRepo(root: string): RepoStats {
   const absRoot = path.resolve(root);
   const rootName = path.basename(absRoot);
-  const entries: FileEntry[] = [];
   const dirAgg = new Map<string, { files: number; bytes: number }>();
+  const byExtMap = new Map<string, ExtStat>();
   const ignored: string[] = [];
+  const largestMinHeap: FileEntry[] = [];
+  const notableHits = new Map<string, { relPath: string; size: number }>();
+  const notableLower = new Set(NOTABLE_NAMES.map((n) => n.toLowerCase()));
+  let totalFiles = 0;
+  let totalBytes = 0;
+  let totalLines = 0;
+  const visited = new Set<string>();
 
-  function walk(dir: string) {
+  function walk(dir: string, depth: number) {
+    if (depth > MAX_DEPTH) return;
+    let real: string;
+    try {
+      real = fs.realpathSync(dir);
+    } catch {
+      real = dir;
+    }
+    if (visited.has(real)) return;
+    visited.add(real);
+
     let items: fs.Dirent[];
     try {
       items = fs.readdirSync(dir, { withFileTypes: true });
@@ -102,10 +139,10 @@ export function scanRepo(root: string): RepoStats {
       const full = path.join(dir, item.name);
       if (item.isDirectory()) {
         if (DEFAULT_IGNORE.has(item.name)) {
-          ignored.push(path.relative(absRoot, full));
+          ignored.push(path.relative(absRoot, full).split(path.sep).join("/"));
           continue;
         }
-        walk(full);
+        walk(full, depth + 1);
       } else if (item.isFile()) {
         let stat: fs.Stats;
         try {
@@ -116,34 +153,37 @@ export function scanRepo(root: string): RepoStats {
         const rel = path.relative(absRoot, full).split(path.sep).join("/");
         const ext = path.extname(item.name).toLowerCase() || "(no ext)";
         const lines = TEXT_EXTENSIONS.has(ext) ? countLines(full, stat.size) : 0;
-        entries.push({ relPath: rel, size: stat.size, lines, ext });
+
+        totalFiles += 1;
+        totalBytes += stat.size;
+        totalLines += lines;
+
+        const extStat = byExtMap.get(ext) ?? { ext, files: 0, bytes: 0, lines: 0 };
+        extStat.files += 1;
+        extStat.bytes += stat.size;
+        extStat.lines += lines;
+        byExtMap.set(ext, extStat);
 
         const topDir = rel.includes("/") ? rel.split("/")[0] : "(root)";
         const cur = dirAgg.get(topDir) ?? { files: 0, bytes: 0 };
         cur.files += 1;
         cur.bytes += stat.size;
         dirAgg.set(topDir, cur);
+
+        insertTop(largestMinHeap, { relPath: rel, size: stat.size, lines, ext }, TOP_LARGEST);
+
+        const relLower = rel.toLowerCase();
+        if (notableLower.has(relLower) && !notableHits.has(relLower)) {
+          notableHits.set(relLower, { relPath: rel, size: stat.size });
+        }
       }
     }
   }
 
-  walk(absRoot);
-
-  const byExtMap = new Map<string, ExtStat>();
-  let totalBytes = 0;
-  let totalLines = 0;
-  for (const e of entries) {
-    totalBytes += e.size;
-    totalLines += e.lines;
-    const cur = byExtMap.get(e.ext) ?? { ext: e.ext, files: 0, bytes: 0, lines: 0 };
-    cur.files += 1;
-    cur.bytes += e.size;
-    cur.lines += e.lines;
-    byExtMap.set(e.ext, cur);
-  }
+  walk(absRoot, 0);
 
   const byExtension = [...byExtMap.values()].sort((a, b) => b.files - a.files);
-  const largestFiles = [...entries].sort((a, b) => b.size - a.size).slice(0, 15);
+  const largestFiles = largestMinHeap.slice().sort((a, b) => b.size - a.size);
 
   const topDirectories = [...dirAgg.entries()]
     .map(([dir, v]) => ({ dir, files: v.files, bytes: v.bytes }))
@@ -151,10 +191,13 @@ export function scanRepo(root: string): RepoStats {
     .slice(0, 12);
 
   const notableFiles: { name: string; relPath: string; size: number }[] = [];
+  const seenNotable = new Set<string>();
   for (const name of NOTABLE_NAMES) {
-    const found = entries.find((e) => e.relPath.toLowerCase() === name.toLowerCase());
-    if (found) {
-      notableFiles.push({ name, relPath: found.relPath, size: found.size });
+    const key = name.toLowerCase();
+    const hit = notableHits.get(key);
+    if (hit && !seenNotable.has(key)) {
+      seenNotable.add(key);
+      notableFiles.push({ name, relPath: hit.relPath, size: hit.size });
     }
   }
 
@@ -162,7 +205,7 @@ export function scanRepo(root: string): RepoStats {
     root: absRoot,
     rootName,
     scannedAt: new Date().toISOString(),
-    totalFiles: entries.length,
+    totalFiles,
     totalBytes,
     totalLines,
     largestFiles,
