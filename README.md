@@ -1,65 +1,109 @@
 # Lumen
 
-> Repository insight in one click.
+> Repository insight and test-coverage analysis — from any terminal, in seconds.
 
-Lumen scans a code repository and produces a clean, self-contained HTML or
-Markdown report covering its file tree, sizes, line counts, languages, largest
-files — and an optional **test-coverage breakdown** that works with Jest,
-Vitest, Nx, Jasmine, Karma, Mocha+nyc, AVA, or tap.
+Lumen scans a code repository and produces a clean report covering its file tree, sizes, line counts, languages — and a full **test-coverage analysis** with diff-aware checking, AI summaries, and a CI threshold gate.
 
 It ships in two forms:
 
-- **`@ajmal_n/lumen-cli`** — a tiny Node.js CLI that drops a report into your `Downloads` folder.
+- **`@ajmal_n/lumen-cli`** — a Node.js CLI with an interactive menu and a `lumen` binary.
 - **`lumen-desktop`** — a cross-platform Electron GUI for Windows and Linux.
 
 ## Install the CLI
 
 ```bash
 npm install -g @ajmal_n/lumen-cli
-lumen .
+lumen
 ```
 
-That's it. Lumen scans the current directory and writes
-`~/Downloads/lumen-<repo>-<timestamp>.html`.
+Run `lumen` with no arguments to open the interactive menu. Or scan immediately:
 
-Run on demand without installing:
+```bash
+lumen .                        # HTML report → ~/Downloads
+lumen . --diff                 # coverage for changed files only (default in git repos)
+lumen . --all -t 80            # full project, fail if line coverage < 80%
+lumen . -f md -o . -n COVERAGE # Markdown report → ./COVERAGE.md
+```
+
+Run without installing:
 
 ```bash
 npx @ajmal_n/lumen-cli .
 ```
 
-A sample HTML report for this repository is included here:
-<a href="https://rainbow-pudding-9f34d4.netlify.app/" target="_blank" rel="noopener noreferrer">Open the sample HTML report in a new window</a>.
+Requires **Node.js 18 or newer**.
 
-With test coverage (after `jest --coverage`, `vitest run --coverage`,
-`nx test --coverage`, or `nyc mocha`):
+## Interactive menu
 
-```bash
-lumen . -f md -o . -n COVERAGE -t 80
-# → ./COVERAGE.md, exits 2 if total line coverage is below 80%
+```
+◆  lumen · interactive mode
+│
+◆  Repository path
+│  /home/you/projects/myapp
+│
+◆  Test command
+│  npm test
+│
+◆  What would you like to do?
+│  ● Coverage check · changed files (diff vs base branch)
+│  ○ Coverage check · all files (full project)
+│  ○ Run tests · generate HTML report
+│  ○ Run tests · generate Markdown report
+│  ○ Scan only (skip running tests)
+│  ○ AI analysis · summary + suggestions
+│  ○ Change repository path
+│  ○ Change test command
+│  ○ Exit
 ```
 
-This sample command produces a Markdown coverage report with the coverage
-summary and a per-file breakdown you can review in CI or locally.
+The menu is **persistent** — it returns after every action. Press `Ctrl+C` or choose **Exit** to quit.
+
+## Diff coverage
+
+The default in git repos. Compares your branch against the base and shows coverage **only for files you changed**:
+
+```
+Branch : feature/parser  →  origin/main
+Changed: 3 files
+
+src/parser/index.ts     ████████░░   82.0%  ⚠
+src/util/string.ts      ██████░░░░   60.0%  ✗
+src/util/array.ts       █████████░   90.0%  ✓
+
+Total                   ████████░░   77.3%  ✗
+
+✗ Below 80% threshold
+```
+
+Gracefully falls back to full-project coverage when there is no git repo, no changed files, or no coverage data for changed files.
+
+## AI analysis
+
+Ask Ollama (local), OpenAI, or Anthropic for a plain-language summary and three concrete suggestions — based on metrics only, no source code uploaded.
+
+| Provider | How to enable |
+|---|---|
+| **Ollama** (local, free) | `ollama serve` + `ollama pull llama3.2` |
+| **OpenAI** | `export OPENAI_API_KEY=sk-…` |
+| **Anthropic** | `export ANTHROPIC_API_KEY=sk-ant-…` |
 
 ## Install the Desktop app
 
-Download the latest release for your platform from the
-[GitHub Releases page](../../releases):
+Download the latest release from the [GitHub Releases page](../../releases):
 
-- **Windows** — `Lumen-Setup-<version>.exe` or the portable `Lumen-<version>.exe`
-- **Linux** — `Lumen-<version>.AppImage` or the `.deb` package
+- **Windows** — `Lumen-Setup-<version>.exe` or portable `Lumen-<version>.exe`
+- **Linux** — `Lumen-<version>.AppImage` or `.deb`
 
-Or build it yourself — see [GUIDE.md](./GUIDE.md#building-the-desktop-app).
+Or build from source — see [GUIDE.md](./GUIDE.md#building-from-source).
 
 ## Documentation
 
 | Document | What's in it |
-| --- | --- |
-| [GUIDE.md](./GUIDE.md) | Full guide — CLI usage, desktop UI, architecture, building, customizing. |
-| [CONTRIBUTING.md](./CONTRIBUTING.md) | How to set up the repo and submit changes. |
-| Package docs | [`core/`](./core) · [`cli/`](./cli) · [`desktop/`](./desktop) |
+|---|---|
+| [cli/README.md](./cli/README.md) | Full CLI reference — all flags, menu options, test framework setup, CI examples. |
+| [GUIDE.md](./GUIDE.md) | Architecture, building from source, desktop app, contributing. |
+| [CONTRIBUTING.md](./CONTRIBUTING.md) | How to set up the repo and send a patch. |
 
 ## License
 
-MIT — see [LICENSE](./LICENSE).
+MIT © [Ajmal Nasumudeen](https://github.com/ajmaln)

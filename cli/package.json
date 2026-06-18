@@ -1,6 +1,6 @@
 {
   "name": "@ajmal_n/lumen-cli",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Scan any repo and emit a self-contained HTML or Markdown report — with test-coverage breakdown, an interactive menu, and optional local-Ollama AI analysis.",
   "license": "MIT",
   "bin": {

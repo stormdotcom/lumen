@@ -23,33 +23,29 @@ Everything you need to use, build, and extend Lumen.
 
 ## What Lumen does
 
-You point Lumen at a repository (any folder, really) and it produces a single
-HTML file summarizing what's in there:
+You point Lumen at a repository (any folder) and it:
 
-- Total files, size, and lines of code
-- Per-extension rollup (`.ts`, `.py`, `.css`, …) with size + LOC bars
-- Top-level directory breakdown
-- The 15 largest files
-- Detected "notable" files — `README`, `LICENSE`, `package.json`,
-  `Dockerfile`, etc.
-- A collapsible file tree
+- Reports total files, size, and lines of code
+- Shows a per-extension rollup (`.ts`, `.py`, `.css`, …) with size + LOC bars
+- Lists the top-level directory breakdown and the 15 largest files
+- Detects notable files — `README`, `LICENSE`, `package.json`, `Dockerfile`, etc.
+- Parses test coverage data (Istanbul `coverage-summary.json` / `lcov.info`)
+- Filters coverage to only files changed in your branch (diff mode)
+- Asks an LLM for a plain-language summary and concrete suggestions (AI analysis)
 
-The report is **one self-contained HTML file** — no external CSS, no JS, no
-network calls. Open it in a browser, email it, drop it in a wiki — it just
-works.
+Reports are **self-contained single files** — no external CSS, no JS, no network calls.
 
-Lumen ignores `node_modules`, `.git`, `dist`, `build`, `coverage`, `.next`,
-`__pycache__`, virtual envs, and similar build/dependency folders by default.
+Lumen ignores `node_modules`, `.git`, `dist`, `build`, `coverage`, `.next`, `__pycache__`, virtual envs, and similar folders by default.
+
+---
 
 ## Install the CLI
-
-The fastest way:
 
 ```bash
 npm install -g @ajmal_n/lumen-cli
 ```
 
-Or run without installing:
+Run without installing:
 
 ```bash
 npx @ajmal_n/lumen-cli .
@@ -57,7 +53,40 @@ npx @ajmal_n/lumen-cli .
 
 Requires Node.js **18 or newer**.
 
+---
+
 ## Using the CLI
+
+### Interactive menu (recommended)
+
+```bash
+lumen
+```
+
+Run with no arguments from any terminal. The menu is **persistent** — it returns after every action. Only selecting **Exit** (or pressing `Ctrl+C`) quits.
+
+```
+◆  lumen · interactive mode
+│
+◆  Repository path
+│  /home/you/projects/myapp
+│
+◆  Test command (leave blank to skip)
+│  npm test
+│
+◆  What would you like to do?
+│  ● Coverage check · changed files (diff vs base branch)
+│  ○ Coverage check · all files (full project)
+│  ○ Run tests · generate HTML report
+│  ○ Run tests · generate Markdown report
+│  ○ Scan only (skip running tests)
+│  ○ AI analysis · summary + suggestions
+│  ○ Change repository path
+│  ○ Change test command
+│  ○ Exit
+```
+
+### CLI flags
 
 ```bash
 lumen [path] [options]
@@ -65,140 +94,165 @@ lumen [path] [options]
 
 `path` defaults to the current directory.
 
-### Options
-
 | Flag | Description | Default |
-| --- | --- | --- |
-| `-f, --format <fmt>` | Output format — `html` or `markdown` (alias: `md`) | `html` |
-| `-o, --out <dir>` | Output directory for the report | `~/Downloads` |
-| `-n, --name <name>` | Override the report filename (no extension) | `lumen-<repo>-<timestamp>` |
-| `--coverage-dir <dir>` | Path to coverage output dir (e.g. `./coverage`). Auto-discovered if omitted. | auto |
-| `--no-coverage` | Skip test-coverage detection entirely | off |
-| `-t, --threshold <pct>` | Fail with exit code `2` if total line coverage < pct | none |
-| `--print-path` | Print only the report path (machine-readable) | off |
-| `-V, --version` | Print the version | |
+|---|---|---|
+| `-f, --format <fmt>` | Output format: `html` or `markdown` / `md` | `html` |
+| `-o, --out <dir>` | Output directory | `~/Downloads` |
+| `-n, --name <name>` | Report filename without extension | `lumen-<repo>-<timestamp>` |
+| `--diff [base]` | Coverage for changed files only (vs base branch) | off |
+| `--all` | Full-project coverage — overrides `--diff` | off |
+| `--coverage-dir <dir>` | Path to coverage directory (auto-discovered if omitted) | auto |
+| `--no-coverage` | Skip coverage detection | off |
+| `-t, --threshold <pct>` | Exit code `2` if line coverage is below this percent | none |
+| `--print-path` | Print only the report file path (machine-readable) | off |
+| `-V, --version` | Print version and exit | |
 | `-h, --help` | Print help | |
-
-The file extension is chosen automatically based on `--format` (`.html` or
-`.md`), so you don't put it in `--name`.
 
 ### Examples
 
 ```bash
-# Scan current directory → HTML report into ~/Downloads
+# Interactive menu
+lumen
+
+# Diff coverage — check only what you changed
+lumen . --diff
+lumen . --diff origin/develop
+lumen . --diff -t 80           # fail if changed-file coverage < 80%
+
+# Full project
+lumen . --all
+lumen . --all -t 80
+
+# HTML report
 lumen .
+lumen ~/code/myapp --out ~/Desktop --name snapshot
 
-# Markdown report instead — perfect for pasting into a README or wiki
-lumen . --format markdown
-lumen . -f md            # same thing, short alias
+# Markdown
+lumen . -f md
+lumen . -f md -o . -n COVERAGE   # → ./COVERAGE.md
 
-# Scan a project, save the report next to it
-lumen ~/code/myapp --out ~/code/myapp
+# CI: generate report + gate on coverage
+lumen . --all -f md -o . -n COVERAGE -t 80
 
-# Custom filename
-lumen . --name today-snapshot
-
-# Markdown straight into the current dir
-lumen . -f md -o . -n REPORT     # → ./REPORT.md
-
-# Open the report immediately (Linux/macOS)
-xdg-open "$(lumen . --print-path)" 2>/dev/null || open "$(lumen . --print-path)"
+# Skip coverage
+lumen . --no-coverage
 ```
 
-### Output formats
+### Diff coverage
 
-- **HTML** (default) — a single self-contained document with inline CSS,
-  styled like the desktop GUI. Open in a browser, email, or upload anywhere.
-- **Markdown** — renders the same data as GitHub-flavored Markdown tables
-  with collapsible "ignored directories" details. Pastes cleanly into
-  GitHub issues, READMEs, Notion, and most wikis.
+The default mode in git repos. Lumen compares your current branch against the base branch and shows coverage only for the files you changed:
+
+```
+Branch : feature/parser  →  origin/main
+Changed: 3 files
+
+src/parser/index.ts     ████████░░   82.0%  ⚠
+src/util/string.ts      ██████░░░░   60.0%  ✗
+src/util/array.ts       █████████░   90.0%  ✓
+
+Total (changed files)   ████████░░   77.3%  ✗
+  lines: 140/181  stmts: 140/181  fns: 16/22  branches: 30/44
+
+✗ Below 80% threshold
+```
+
+**Failover chain** — diff mode degrades gracefully:
+
+| Situation | What happens |
+|---|---|
+| Not a git repository | Warning → full-project coverage shown |
+| `git` commands fail | Warning → full-project coverage shown |
+| No changed files | Warning → full-project coverage shown |
+| Changed files found but none in coverage data | Warning + file list → full-project coverage shown |
 
 ### Test coverage
 
-Lumen detects your testing framework (Jest, Vitest, Nx, Jasmine, Karma,
-Mocha+nyc, AVA, tap) from `package.json` + config files, then scans for
-Istanbul `coverage-summary.json` and `lcov.info` files anywhere in the repo —
-including Nx-style nested layouts (`coverage/apps/<name>/coverage-summary.json`).
-
-Run your tests with coverage enabled first:
+Lumen detects your testing framework from `package.json` and config files, then finds `coverage-summary.json` and `lcov.info` on disk. Run your tests with coverage first:
 
 ```bash
 # Jest
-npx jest --coverage --coverageReporters=json-summary --coverageReporters=lcov
+npx jest --coverage --coverageReporters=json-summary
 
 # Vitest
-npx vitest run --coverage --coverage.reporter=json-summary --coverage.reporter=lcov
+npx vitest run --coverage --coverage.reporter=json-summary
 
-# Nx (jest under the hood)
+# Nx
 npx nx test myapp --coverage --coverageReporters=json-summary
 
 # Mocha + nyc
-npx nyc --reporter=json-summary --reporter=lcov mocha
+npx nyc --reporter=json-summary mocha
 ```
 
-Then run Lumen. Coverage cards (Lines / Statements / Functions / Branches),
-the worst-covered files, and a threshold pill all show up automatically.
+Then run `lumen` — coverage cards (Lines / Statements / Functions / Branches), the worst-covered files, and a threshold pill all appear automatically.
 
-```bash
-lumen . -f md -o . -n COVERAGE -t 80      # CI gate at 80% line coverage
-lumen . --coverage-dir ./apps/web/coverage
-lumen . --no-coverage                     # skip detection
-```
+### AI analysis
+
+Lumen can send coverage **metrics** (no source code) to an LLM and return a plain-language summary and three prioritized suggestions.
+
+**Supported providers:**
+
+| Provider | How to enable |
+|---|---|
+| **Ollama** (local, free, private) | `ollama serve` + `ollama pull llama3.2` |
+| **OpenAI** | `export OPENAI_API_KEY=sk-…` |
+| **Anthropic** | `export ANTHROPIC_API_KEY=sk-ant-…` |
+
+**Environment variable overrides:**
+
+| Variable | Default |
+|---|---|
+| `LUMEN_OLLAMA_URL` | `http://localhost:11434` |
+| `LUMEN_OLLAMA_MODEL` | auto |
+| `OPENAI_BASE_URL` | `https://api.openai.com` |
+| `LUMEN_OPENAI_MODEL` | `gpt-4o-mini` |
+| `ANTHROPIC_BASE_URL` | `https://api.anthropic.com` |
+| `LUMEN_ANTHROPIC_MODEL` | `claude-haiku-4-5-20251001` |
 
 ### Exit codes
 
 | Code | Meaning |
-| --- | --- |
-| 0 | Report written |
-| 1 | Path doesn't exist or isn't a directory, or bad flag |
-| 2 | Coverage below `--threshold` |
+|---|---|
+| `0` | Success |
+| `1` | Invalid path, bad flag, or unexpected error |
+| `2` | Coverage is below the `--threshold` value |
+
+---
 
 ## Install the Desktop app
 
-Grab the latest installer from the
-[Releases page](../../releases):
+Download from the [Releases page](../../releases):
 
-- **Windows** — `Lumen-Setup-<version>.exe` (NSIS installer) or `Lumen-<version>.exe` (portable, no install)
-- **Linux** — `Lumen-<version>.AppImage` (chmod +x and run) or `lumen-desktop_<version>_amd64.deb`
+- **Windows** — `Lumen-Setup-<version>.exe` (NSIS installer) or `Lumen-<version>.exe` (portable)
+- **Linux** — `Lumen-<version>.AppImage` or `.deb`
 
-macOS is unsupported as a maintained target, but a `dist:mac` build with
-electron-builder will work if you compile from source.
+---
 
 ## Using the Desktop app
 
 1. Launch **Lumen**.
-2. Click **Open Repository…** in the top right.
-3. Pick the folder you want to scan.
-4. The report appears in the app — same content as the CLI's HTML, rendered
-   inside an Electron window.
-5. Click **Export HTML** to save the same report as a standalone `.html` file.
-   The file picker opens in your `Downloads` folder by default.
+2. Click **Open Repository…** (or drop a folder onto the window).
+3. The report appears in the main panel — file breakdown, coverage cards, and per-file table.
+4. In the **Tests** sidebar:
+   - Enter a test command and click **Run** to stream test output live.
+   - Check **Show diff coverage only** (available in git repos) to filter coverage to changed files only.
+5. In the **AI Analysis** sidebar, pick a provider and model, then click **Generate summary**.
+6. Use **Export ▾** to save the report as HTML or Markdown.
 
-The desktop's "Export HTML" output is byte-for-byte identical to what the CLI
-would have produced for the same folder.
+---
 
 ## What's in a report
 
-A Lumen report has four sections:
+| Section | Contents |
+|---|---|
+| **Summary** | Total files, total size, LOC, ignored dirs |
+| **Notable files** | README, LICENSE, package.json, Dockerfile, etc. |
+| **File types** | Top 20 extensions with file count, size, and LOC |
+| **Top directories** | File count and size per top-level dir |
+| **Largest files** | The 15 biggest files |
+| **Test coverage** | Lines / Statements / Functions / Branches cards + per-file table |
+| **AI Analysis** | Plain-language summary + suggestions (if requested) |
 
-### 1. Stats cards
-Big-number summary: total files, total size, lines of code, number of ignored
-paths.
-
-### 2. File tree
-A collapsible tree of the 15 largest files (anchored to their directories).
-This makes it easy to spot a single oversized file buried deep in the tree.
-
-### 3. Notable files
-Standard project files that were detected — `README.md`, `LICENSE`,
-`package.json`, `Dockerfile`, `Cargo.toml`, `go.mod`, etc.
-
-### 4. Breakdown tables
-- **File Types** — top 20 extensions by file count, with a bar chart, total
-  size, and total lines.
-- **Top Directories** — file count and size per top-level directory.
-- **Largest Files** — the 15 biggest files, with a size bar weighted across the
-  whole project.
+---
 
 ## Repo layout
 
@@ -207,21 +261,31 @@ lumen/
 ├── core/                @ajmal_n/lumen-core — shared scanner + renderers + coverage
 │   ├── src/
 │   │   ├── scanner.ts   walks the tree, builds RepoStats
-│   │   ├── report.ts    RepoStats (+ CoverageReport) → single HTML doc
-│   │   ├── markdown.ts  RepoStats (+ CoverageReport) → GFM markdown
+│   │   ├── report.ts    RepoStats (+ CoverageReport + AiSummary) → HTML
+│   │   ├── markdown.ts  RepoStats (+ CoverageReport + AiSummary) → GFM Markdown
 │   │   ├── coverage.ts  framework detection + Istanbul/lcov parser
 │   │   └── index.ts     re-exports
+│   ├── tests/           Jest unit tests
+│   ├── jest.config.js
 │   ├── package.json
 │   └── tsconfig.json
 │
 ├── cli/                 @ajmal_n/lumen-cli — npm package + `lumen` binary
-│   ├── src/index.ts     CLI entry (uses commander)
+│   ├── src/
+│   │   ├── index.ts     CLI entry (commander)
+│   │   ├── menu.ts      Interactive menu (@clack/prompts)
+│   │   ├── runner.ts    Test command spawner (streaming, bounded buffer)
+│   │   ├── git.ts       git diff helpers (isGitRepo, getChangedFiles)
+│   │   ├── util.ts      Coverage filter, diff report formatter, bar renderer
+│   │   ├── paths.ts     OS-aware downloads dir
+│   │   └── ollama.ts    Ollama probe + streaming summarizer
+│   ├── README.md        Full CLI reference
 │   ├── package.json
 │   └── tsconfig.json
 │
 ├── desktop/             lumen-desktop — Electron GUI
 │   ├── src/
-│   │   ├── main.ts          Electron main process
+│   │   ├── main.ts          Electron main process (IPC handlers, git, AI)
 │   │   ├── preload.ts       contextBridge → window.lumen
 │   │   └── renderer/
 │   │       ├── index.html   Shell UI
@@ -229,18 +293,19 @@ lumen/
 │   │       └── styles.css   Light theme
 │   ├── scripts/copy-assets.js
 │   ├── package.json         (includes electron-builder config)
-│   ├── tsconfig.json        main + preload
+│   ├── tsconfig.json
 │   └── tsconfig.renderer.json
 │
 ├── .github/workflows/   ci.yml + release.yml
 ├── package.json         npm workspaces root
 ├── tsconfig.base.json   shared TS settings
-├── README.md            brief overview
+├── README.md            Overview + quick start
 ├── GUIDE.md             this file
-├── CONTRIBUTING.md      how to send patches
-├── LICENSE              MIT
-└── .editorconfig
+├── CONTRIBUTING.md
+└── LICENSE
 ```
+
+---
 
 ## Building from source
 
@@ -253,24 +318,13 @@ git clone https://github.com/<you>/lumen.git
 cd lumen
 ```
 
-### Step 2 — Install dependencies (once)
+### Step 2 — Install dependencies
 
 ```bash
 npm install
 ```
 
-`npm install` at the root does the work for **every** workspace in one shot.
-You should see something like `added N packages, audited N+ in workspaces`.
-
-This creates:
-- `node_modules/` at the root (shared deps hoisted here)
-- `node_modules/@ajmal_n/lumen-core` — a **symlink** into `core/`, so the CLI and
-  desktop app import the live source you're editing, no rebuild dance.
-- `cli/node_modules/`, `desktop/node_modules/` — only package-specific deps
-  that can't hoist.
-
-If you ever see `Cannot find module '@ajmal_n/lumen-core'`, you skipped this step or
-the symlink was clobbered. Run `npm install` again.
+Creates workspace symlinks so `cli` and `desktop` import live `core` source without a rebuild dance.
 
 ### Step 3 — Build everything
 
@@ -278,11 +332,7 @@ the symlink was clobbered. Run `npm install` again.
 npm run build
 ```
 
-Compiles in order: `core` → `cli` → `desktop` (renderer + main + preload +
-asset copy). The order matters because the latter two import the JS that
-`core`'s build emits.
-
-You can also build a single package:
+Compiles in order: `core` → `cli` → `desktop`. You can also build individually:
 
 ```bash
 npm run build:core
@@ -292,210 +342,139 @@ npm run build:desktop
 
 ### Step 4 — Run it
 
-CLI on the current folder:
-
 ```bash
+# CLI
 node cli/dist/index.js .
-```
-
-Or use the root shortcut:
-
-```bash
+# or
 npm run cli -- .
-```
 
-Desktop app:
-
-```bash
+# Desktop
 npm run desktop
 ```
 
-### Step 5 (optional) — Install the CLI globally from your local clone
-
-If you want to type `lumen` anywhere on your machine and have it run *your*
-local code, link it:
+### Step 5 — Install globally from source
 
 ```bash
 npm install -g ./cli
-# or:
+# or
 cd cli && npm link
 ```
 
-Now `lumen .` from any directory invokes the binary built in `cli/dist/`.
-To undo:
+To undo: `npm uninstall -g @ajmal_n/lumen-cli`
+
+### Step 6 — Run tests
 
 ```bash
-npm uninstall -g @ajmal_n/lumen-cli
+# core unit tests
+npm run -w @ajmal_n/lumen-core test
+
+# with coverage
+npm run -w @ajmal_n/lumen-core test:coverage
 ```
-
-### Step 6 — Iterate
-
-A typical edit-build-run loop:
-
-```bash
-# edit a file under core/src/ or cli/src/
-npm run build:core   # if you touched core
-npm run build:cli    # if you touched cli
-node cli/dist/index.js .
-```
-
-For the desktop app, `npm run -w lumen-desktop dev` rebuilds and re-launches
-Electron in one command.
 
 ### Cleaning up
-
-```bash
-npm run clean             # wipes every dist/
-rm -rf node_modules core/node_modules cli/node_modules desktop/node_modules
-rm package-lock.json      # only if you want a fully fresh resolve
-npm install               # start over
-```
-
-### Build a single package
-
-```bash
-npm run build:core
-npm run build:cli
-npm run build:desktop
-```
-
-### Clean
 
 ```bash
 npm run clean
 ```
 
-Wipes every `dist/` folder.
+---
 
 ## Building the desktop app
 
-Binaries are produced by [electron-builder](https://www.electron.build/), with
-config baked into `desktop/package.json`. Output goes to `desktop/release/`.
-
 ```bash
-# From the repo root:
-npm run -w lumen-desktop dist:win     # Windows: NSIS installer + portable .exe
-npm run -w lumen-desktop dist:linux   # Linux: AppImage + .deb
+npm run -w lumen-desktop dist:win     # Windows NSIS installer + portable .exe
+npm run -w lumen-desktop dist:linux   # Linux AppImage + .deb
 npm run -w lumen-desktop dist:all     # Both
 ```
 
-### Cross-compiling
+Output goes to `desktop/release/`.
 
-- **Windows ↔ Linux** generally works on either host.
-- For **Linux from Windows**, you may need WSL2 with the standard Electron
-  build deps installed.
-- For **macOS**, build on macOS — code signing for `.dmg` requires it.
+**Cross-compiling notes:**
+- Windows ↔ Linux generally works on either host.
+- For Linux from Windows, use WSL2 with the standard Electron build deps.
+- macOS builds require macOS for code signing.
 
-### Adjusting the build
-
-Edit the `build` block in `desktop/package.json`:
-
-```jsonc
-"build": {
-  "appId": "io.lumen.desktop",
-  "productName": "Lumen",
-  "directories": { "output": "release" },
-  "files": ["dist/**/*", "package.json"],
-  "win":   { "target": ["nsis", "portable"] },
-  "linux": { "target": ["AppImage", "deb"], "category": "Development" }
-}
-```
-
-Add an icon by setting `build.win.icon` (`.ico`) and `build.linux.icon`
-(`.png`, 512×512 or larger).
+---
 
 ## Customizing the report
 
-All visual changes live in **one file**: `core/src/report.ts`. The CSS is
-inlined in the returned HTML string. Both the CLI and the desktop's "Export
-HTML" action call the same `renderReport(stats)` function, so anything you
-change here applies everywhere.
+**Visual changes** — edit `core/src/report.ts` (HTML) or `core/src/markdown.ts` (Markdown). CSS is inlined. Both the CLI and the desktop "Export" action call the same functions.
 
-For the in-app desktop view (which renders the same data but with interactive
-buttons), edit `desktop/src/renderer/app.ts` and `desktop/src/renderer/styles.css`.
+**Scan behavior** — edit `core/src/scanner.ts`:
 
-### Adjusting what gets scanned
-
-Edit `core/src/scanner.ts`:
-
-- `DEFAULT_IGNORE` — directory names that are skipped entirely.
-- `TEXT_EXTENSIONS` — extensions that get a line count (binary files are
-  counted but their LOC is reported as 0).
+- `DEFAULT_IGNORE` — directory names skipped entirely.
+- `TEXT_EXTENSIONS` — extensions that get a line count.
 - `NOTABLE_NAMES` — files surfaced in the "Notable files" section.
 
-Then rebuild:
+Then rebuild: `npm run build:core && npm run build:cli`
 
-```bash
-npm run build:core
-npm run build:cli    # or build:desktop
-```
+---
 
 ## Architecture
 
-### The flow
+### Data flow
 
 ```
-                ┌─────────────────────────┐
-                │      @ajmal_n/lumen-core        │
-                │                         │
-                │   scanRepo(path)        │
-                │       └─► RepoStats     │
-                │                         │
-                │   renderReport(stats)   │
-                │       └─► HTML string   │
-                └────────────┬────────────┘
-                             │
-        ┌────────────────────┴────────────────────┐
-        │                                         │
-        ▼                                         ▼
-┌─────────────────┐                  ┌──────────────────────────┐
-│   @ajmal_n/lumen-cli     │                  │     lumen-desktop        │
-│                 │                  │                          │
-│ argv ─► scan    │                  │  main.ts                 │
-│      ─► render  │                  │   ├─ pickDirectory       │
-│      ─► fs.write│                  │   ├─ scanRepo (IPC)      │
-└─────────────────┘                  │   └─ exportReport (IPC)  │
-                                     │                          │
-                                     │  preload.ts              │
-                                     │   └─ contextBridge       │
-                                     │                          │
-                                     │  renderer/app.ts         │
-                                     │   ├─ pickDirectory       │
-                                     │   ├─ scan & render UI    │
-                                     │   └─ Export → renderReport│
-                                     └──────────────────────────┘
+                ┌──────────────────────────────┐
+                │      @ajmal_n/lumen-core      │
+                │                              │
+                │   scanRepo(path)             │
+                │       └─► RepoStats          │
+                │                              │
+                │   findCoverage(path)         │
+                │       └─► CoverageReport     │
+                │                              │
+                │   renderReport(stats, cov)   │
+                │       └─► HTML string        │
+                │                              │
+                │   renderMarkdown(stats, cov) │
+                │       └─► Markdown string    │
+                └──────────────┬───────────────┘
+                               │
+          ┌────────────────────┴──────────────────┐
+          │                                       │
+          ▼                                       ▼
+┌──────────────────────┐           ┌──────────────────────────────┐
+│   @ajmal_n/lumen-cli │           │       lumen-desktop          │
+│                      │           │                              │
+│ argv → scan          │           │  main.ts                     │
+│      → diff/coverage │           │   ├─ pickDirectory (IPC)     │
+│      → AI analysis   │           │   ├─ scanRepo (IPC)          │
+│      → render        │           │   ├─ runTests (IPC)          │
+│      → fs.write      │           │   ├─ gitChangedFiles (IPC)   │
+│                      │           │   ├─ aiSummarize (IPC)       │
+│ Interactive menu     │           │   └─ exportReport (IPC)      │
+│   @clack/prompts     │           │                              │
+│   persistent loop    │           │  preload.ts (contextBridge)  │
+└──────────────────────┘           │  renderer/app.ts             │
+                                   └──────────────────────────────┘
 ```
 
-### Why a monorepo?
+### Key design decisions
 
-The shared `@ajmal_n/lumen-core` package lets the CLI and the desktop GUI produce
-identical reports without duplicating scanner or template code. Workspace
-linking via npm means changes to `core/src/*.ts` are picked up by the other
-packages on the next `npm run build`.
+- **Shared core** — scanner and renderers are in one package. CLI and desktop produce identical reports from the same code.
+- **No framework in the renderer** — plain DOM + ES modules. No React, no Vue, no bundler for the renderer.
+- **ESM/CJS interop** — `@clack/prompts` is ESM-only; the CLI loads it via a dynamic import shim so the CommonJS build stays clean.
+- **Streaming scanner** — the scanner uses a min-heap for top-K largest files and streaming aggregation for extension/directory stats; it does not accumulate all entries in memory.
+- **Graceful failover** — diff coverage falls back at every step rather than erroring out.
 
 ### Desktop security model
 
-The renderer runs with:
-- `contextIsolation: true`
-- `nodeIntegration: false`
+The renderer runs with `contextIsolation: true` and `nodeIntegration: false`. It can only call functions exposed by `preload.ts` via `contextBridge.exposeInMainWorld`. The HTML has a strict CSP that blocks remote scripts and stylesheets.
 
-It can only call the API exposed by `preload.ts` (`window.lumen.*`). The
-preload uses `contextBridge.exposeInMainWorld` so the renderer never touches
-Electron or Node APIs directly.
-
-The HTML has a strict Content Security Policy that blocks remote scripts and
-remote stylesheets.
+---
 
 ## Contributing
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for the short version. The 30-second
-checklist:
+See [CONTRIBUTING.md](./CONTRIBUTING.md). Quick checklist:
 
 ```bash
 git clone https://github.com/<you>/lumen.git
 cd lumen
 npm install
 npm run build          # must pass
+npm run -w @ajmal_n/lumen-core test   # must pass
 # make your change
 node cli/dist/index.js .   # sanity check
 git checkout -b feat/<thing>
@@ -503,86 +482,85 @@ git commit -am "feat: <thing>"
 # open a PR
 ```
 
-### Code style
-
+**Code style:**
 - TypeScript strict mode is on. Leave it on.
 - No frameworks in the renderer. Plain DOM + ES modules.
 - Prefer editing existing files over creating new ones.
-- Run `npm run build` before opening a PR — that's the entire test suite right
-  now.
+- Run `npm run build` and `npm run -w @ajmal_n/lumen-core test` before opening a PR.
+
+---
 
 ## Releasing
 
-For the npm publish workflow, see the local `PUBLISHING.md` (gitignored). The
-short version:
+See `PUBLISHING.md` (gitignored) for the full checklist. Short version:
 
-1. Bump the version in `core/package.json` (if `core` changed) and
-   `cli/package.json`.
-2. Tag the commit: `git tag v0.x.y && git push --follow-tags`.
-3. The `Release` workflow in `.github/workflows/release.yml` publishes
-   `@ajmal_n/lumen-core` and `@ajmal_n/lumen-cli` to npm, and builds desktop binaries for
-   Windows and Linux as workflow artifacts.
+1. Bump versions in `core/package.json` and `cli/package.json`.
+2. Update `cli/package.json` `dependencies["@ajmal_n/lumen-core"]` to match.
+3. Build: `npm run build`
+4. Publish: `cd core && npm publish --access public`, then `cd ../cli && npm publish --access public`
+5. Tag: `git tag v0.x.y && git push --follow-tags`
 
-You need an `NPM_TOKEN` repository secret. Create it with:
+The GitHub Actions `release.yml` workflow can automate steps 4–5 with an `NPM_TOKEN` repository secret.
 
-```bash
-npm token create --read-only=false
-```
-
-Then add it under **Settings → Secrets and variables → Actions** on GitHub.
+---
 
 ## Troubleshooting
 
-### `lumen: command not found` after `npm install -g @ajmal_n/lumen-cli`
+### `lumen: command not found` after global install
 
-Your npm global bin directory isn't on `PATH`. Find it:
+Your npm global bin directory isn't on `PATH`:
 
 ```bash
 npm config get prefix
+# Linux/macOS: add <prefix>/bin to PATH
+# Windows: add <prefix> to PATH (usually %APPDATA%\npm)
 ```
 
-Add `<prefix>/bin` (Linux/macOS) or `<prefix>` (Windows) to your `PATH`.
+### No coverage data found
 
-### `cannot resolve @ajmal_n/lumen-core` after a fresh clone
+Run your tests with a coverage reporter that writes `coverage-summary.json` (Istanbul) or `lcov.info` before running `lumen`:
 
-You skipped `npm install` at the repo root. Run it — workspace symlinks only
-exist after install.
+```bash
+npm test       # with --coverage
+lumen . --diff
+```
+
+### Diff shows "no changed files"
+
+You need commits on your branch relative to the base. If you're on `main` comparing to `origin/main`, there are no changes to diff — switch to a feature branch first.
+
+### AI analysis is disabled / times out
+
+For Ollama: ensure `ollama serve` is running and the model is pulled:
+
+```bash
+ollama serve
+ollama pull llama3.2
+```
+
+For OpenAI / Anthropic: verify your key is exported in the current shell:
+
+```bash
+echo $OPENAI_API_KEY
+echo $ANTHROPIC_API_KEY
+```
+
+### `Cannot find module '@ajmal_n/lumen-core'`
+
+Run `npm install` at the repo root — workspace symlinks only exist after install.
 
 ### TypeScript errors after editing `core/src/*`
 
-`cli` and `desktop` consume `core/dist/`, not its source. Rebuild core:
+CLI and desktop import `core/dist/`, not source. Rebuild:
 
 ```bash
 npm run build:core
 ```
 
-### `electron-builder` complains about symlinks on Windows
+### Desktop: blank window
 
-Some Windows configurations refuse to follow workspace symlinks. Workarounds:
+Open devtools (`Ctrl+Shift+I`) and check the console. Usually a stale build — run `npm run build` and relaunch.
 
-- Build inside WSL2.
-- Or run `npm run build` then `npm run -w lumen-desktop dist:win` from an
-  elevated terminal.
+### `electron-builder` fails on Windows with symlink errors
 
-### The report is empty or missing files
-
-Lumen ignores `node_modules`, `.git`, `dist`, `build`, `coverage`, etc. by
-default. If your repo's source lives under one of those names (e.g. you have
-a folder literally called `build`), edit `DEFAULT_IGNORE` in
-`core/src/scanner.ts` and rebuild.
-
-### Desktop app shows a blank window
-
-Check the Electron devtools console (`Ctrl+Shift+I`). The most common cause is
-a stale build — run `npm run build` from the repo root and relaunch.
-
-### "I want the dark theme back"
-
-The original dark theme is in git history (commit before the screenshot-driven
-redesign). You can either:
-
-1. Add a CSS variable toggle in `core/src/report.ts` and a `--theme dark` CLI
-   flag, or
-2. Swap the `:root` block in `report.ts` for the dark palette.
-
-PRs welcome.
+Build inside WSL2, or run from an elevated (Administrator) terminal.
