@@ -38,6 +38,8 @@ interface Settings {
   recentRepos: string[];
 }
 
+interface GitDiffResult { files: string[]; base: string; current: string; }
+
 interface LumenApi {
   pickDirectory: () => Promise<string | null>;
   scanRepo: (dir: string) => Promise<RepoStats>;
@@ -45,6 +47,8 @@ interface LumenApi {
   exportReport: (args: { stats: RepoStats; coverage: CoverageReport | null; ai: AiSummary | null; format: "html" | "markdown" }) => Promise<string | null>;
   reveal: (filePath: string) => Promise<void>;
   openPath: (p: string) => Promise<void>;
+  gitIsRepo: (dir: string) => Promise<boolean>;
+  gitChangedFiles: (dir: string, base?: string) => Promise<GitDiffResult | null>;
   getSettings: () => Promise<Settings>;
   setSettings: (s: Partial<Settings>) => Promise<Settings>;
   addRecent: (dir: string) => Promise<string[]>;
@@ -106,9 +110,16 @@ const setTest = $("#set-test") as HTMLInputElement;
 // dnd
 const dndOverlay = $("#dnd-overlay") as HTMLElement;
 
+// diff coverage
+const diffRow = $("#diff-row") as HTMLElement;
+const chkDiff = $("#chk-diff") as HTMLInputElement;
+const diffHint = $("#diff-hint") as HTMLElement;
+
 // state
 let currentStats: RepoStats | null = null;
 let currentCoverage: CoverageReport | null = null;
+let currentDiff: GitDiffResult | null = null;
+let isGitRepo = false;
 let currentAi: AiSummary | null = null;
 let currentRepo: string | null = null;
 let probes: ProbeResult[] = [];
@@ -196,16 +207,19 @@ function renderTree(node: Record<string, any>, depth: number): string {
   return html;
 }
 
-function renderCoverageCards(cov: CoverageReport): string {
+function renderCoverageCards(cov: CoverageReport, diff: GitDiffResult | null): string {
   const card = (label: string, m: CoverageMetric) => `
     <div class="stat">
       <div class="row">${label}</div>
       <div class="value cov-${covTone(m.pct)}">${pct(m.pct)}</div>
       <div class="foot">${m.covered.toLocaleString()} / ${m.total.toLocaleString()} covered</div>
     </div>`;
+  const diffBadge = diff
+    ? `<span class="pill" title="${esc(diff.files.length + " changed files vs " + diff.base)}">diff · ${diff.files.length} files</span>`
+    : "";
   return `
     <section class="panel cov-panel">
-      <div class="panel-head"><span>Test Coverage <span class="dim">· ${esc(cov.framework)}</span></span><span class="dim">${cov.files.length} files</span></div>
+      <div class="panel-head"><span>Test Coverage <span class="dim">· ${esc(cov.framework)}</span></span><span class="dim">${diffBadge} ${cov.files.length} files</span></div>
       <div class="panel-body tight" style="padding:14px 16px;">
         <div class="grid-stats">
           ${card("Lines", cov.total.lines)}
@@ -217,19 +231,27 @@ function renderCoverageCards(cov: CoverageReport): string {
     </section>`;
 }
 
-function renderCoverageTable(cov: CoverageReport): string {
+function renderCoverageTable(cov: CoverageReport, diff: GitDiffResult | null): string {
+  const changedSet = diff ? new Set(diff.files.map((f) => f.replace(/\\/g, "/"))) : null;
   const rows = cov.files.slice().sort((a, b) => a.lines.pct - b.lines.pct).slice(0, 50)
-    .map((f) => `
-      <tr>
-        <td class="mono path">${esc(f.path)}</td>
+    .map((f) => {
+      const isChanged = changedSet && [...changedSet].some((c) => {
+        const p = f.path.replace(/\\/g, "/");
+        return p === c || p.endsWith("/" + c) || c.endsWith("/" + p);
+      });
+      return `
+      <tr${isChanged ? ' class="diff-changed"' : ""}>
+        <td class="mono path">${esc(f.path)}${isChanged ? ' <span class="chip diff-chip">changed</span>' : ""}</td>
         <td class="num cov-${covTone(f.lines.pct)}">${pct(f.lines.pct)}</td>
         <td class="num cov-${covTone(f.statements.pct)}">${pct(f.statements.pct)}</td>
         <td class="num cov-${covTone(f.functions.pct)}">${pct(f.functions.pct)}</td>
         <td class="num cov-${covTone(f.branches.pct)}">${pct(f.branches.pct)}</td>
-      </tr>`).join("");
+      </tr>`;
+    }).join("");
+  const heading = diff ? `Changed files coverage <span class="dim">· ${diff.current} vs ${esc(diff.base)}</span>` : "Per-file Coverage";
   return `
     <section class="panel">
-      <div class="panel-head"><span>Per-file Coverage</span><span class="dim">${cov.files.length} files · lowest first</span></div>
+      <div class="panel-head"><span>${heading}</span><span class="dim">${cov.files.length} files · lowest first</span></div>
       <div class="panel-body tight">
         <table>
           <thead><tr><th>File</th><th class="num">Lines</th><th class="num">Stmts</th><th class="num">Fns</th><th class="num">Brs</th></tr></thead>
@@ -248,11 +270,38 @@ function renderAiBlock(ai: AiSummary): string {
     </section>`;
 }
 
+function filterCoverageByDiff(cov: CoverageReport, diff: GitDiffResult): CoverageReport {
+  const changedSet = new Set(diff.files.map((f) => f.replace(/\\/g, "/")));
+  const files = cov.files.filter((f) => {
+    const p = f.path.replace(/\\/g, "/");
+    if (changedSet.has(p)) return true;
+    for (const c of changedSet) {
+      if (p.endsWith("/" + c) || c.endsWith("/" + p)) return true;
+    }
+    return false;
+  });
+  if (files.length === 0) return cov; // no match → fall back to all
+  const sum = (arr: number[]) => arr.reduce((a, b) => a + b, 0);
+  const p = (c: number, t: number) => (t === 0 ? 100 : Math.round((c / t) * 1000) / 10);
+  const total = {
+    lines:      { total: sum(files.map(f => f.lines.total)),      covered: sum(files.map(f => f.lines.covered)),      pct: p(sum(files.map(f => f.lines.covered)),      sum(files.map(f => f.lines.total))) },
+    statements: { total: sum(files.map(f => f.statements.total)), covered: sum(files.map(f => f.statements.covered)), pct: p(sum(files.map(f => f.statements.covered)), sum(files.map(f => f.statements.total))) },
+    functions:  { total: sum(files.map(f => f.functions.total)),  covered: sum(files.map(f => f.functions.covered)),  pct: p(sum(files.map(f => f.functions.covered)),  sum(files.map(f => f.functions.total))) },
+    branches:   { total: sum(files.map(f => f.branches.total)),   covered: sum(files.map(f => f.branches.covered)),   pct: p(sum(files.map(f => f.branches.covered)),   sum(files.map(f => f.branches.total))) },
+  };
+  return { ...cov, files, total };
+}
+
 function renderReportUi() {
   if (!currentStats) return;
   const stats = currentStats;
   btnExport.disabled = false;
   btnAiRun.disabled = !probes.some((p) => p.available);
+
+  const useDiff = chkDiff.checked && isGitRepo && currentDiff !== null;
+  const displayCoverage = useDiff && currentCoverage && currentDiff
+    ? filterCoverageByDiff(currentCoverage, currentDiff)
+    : currentCoverage;
 
   const maxExtFiles = Math.max(1, ...stats.byExtension.map((e) => e.files));
   const maxDirFiles = Math.max(1, ...stats.topDirectories.map((d) => d.files));
@@ -299,7 +348,7 @@ function renderReportUi() {
     </header>
 
     ${currentAi ? renderAiBlock(currentAi) : ""}
-    ${currentCoverage ? renderCoverageCards(currentCoverage) : ""}
+    ${displayCoverage ? renderCoverageCards(displayCoverage, useDiff && currentDiff ? currentDiff : null) : ""}
 
     <div class="grid-stats">
       <div class="stat"><div class="row">Total Files</div><div class="value blue">${stats.totalFiles.toLocaleString()}</div><div class="foot">${stats.byExtension.length} distinct extensions</div></div>
@@ -340,7 +389,7 @@ function renderReportUi() {
             <tbody>${largeRows}</tbody>
           </table></div>
         </section>
-        ${currentCoverage ? renderCoverageTable(currentCoverage) : ""}
+        ${displayCoverage ? renderCoverageTable(displayCoverage, useDiff && currentDiff ? currentDiff : null) : ""}
       </div>
     </div>
   `;
@@ -351,35 +400,80 @@ async function openRepository(dir?: string) {
   if (!target) return;
   currentRepo = target;
   currentCoverage = null;
+  currentDiff = null;
+  isGitRepo = false;
   currentAi = null;
+  chkDiff.checked = false;
+  diffRow.style.display = "none";
   showScanning(target);
+
   try {
     const stats = await window.lumen.scanRepo(target);
     currentStats = stats;
-    const cov = await window.lumen.scanCoverage(target);
-    currentCoverage = cov.coverage;
-    testFrameworkEl.textContent = cov.framework;
-    renderReportUi();
-    settings.recentRepos = await window.lumen.addRecent(target);
-    refreshRecent();
   } catch (err) {
     toast(`Scan failed: ${(err as Error).message}`);
     emptyEl.classList.remove("hidden");
     workspaceEl.classList.add("hidden");
+    return;
+  }
+
+  try {
+    const cov = await window.lumen.scanCoverage(target);
+    currentCoverage = cov.coverage;
+    testFrameworkEl.textContent = cov.framework;
+  } catch {
+    currentCoverage = null;
+    testFrameworkEl.textContent = "unknown";
+  }
+
+  // git detection — non-fatal
+  try {
+    isGitRepo = await window.lumen.gitIsRepo(target);
+    if (isGitRepo) {
+      const diff = await window.lumen.gitChangedFiles(target);
+      currentDiff = diff;
+      if (diff) {
+        diffRow.style.display = "";
+        diffHint.textContent = `${diff.files.length} changed vs ${diff.base}`;
+        if (diff.files.length > 0) chkDiff.checked = true;
+      }
+    }
+  } catch {
+    isGitRepo = false;
+    currentDiff = null;
+  }
+
+  renderReportUi();
+
+  // add to recents — non-fatal
+  try {
+    settings.recentRepos = await window.lumen.addRecent(target);
+    refreshRecent();
+  } catch {
+    // recents are nice-to-have
   }
 }
 
+chkDiff.addEventListener("change", () => {
+  if (!isGitRepo) { chkDiff.checked = false; return; }
+  renderReportUi();
+});
+
 async function exportReport(format: "html" | "markdown") {
   if (!currentStats) return;
-  const filePath = await window.lumen.exportReport({
-    stats: currentStats,
-    coverage: currentCoverage,
-    ai: currentAi,
-    format,
-  });
-  if (filePath) {
-    toast(`Saved to ${filePath}`);
-    window.lumen.reveal(filePath);
+  try {
+    const filePath = await window.lumen.exportReport({
+      stats: currentStats,
+      coverage: currentCoverage,
+      ai: currentAi,
+      format,
+    });
+    if (filePath) {
+      toast(`Saved: ${filePath}`);
+      try { window.lumen.reveal(filePath); } catch { /* reveal is cosmetic */ }
+    }
+  } catch (err) {
+    toast(`Save failed: ${(err as Error).message}`, 4000);
   }
 }
 
@@ -433,16 +527,20 @@ btnTestRun.addEventListener("click", async () => {
   try {
     const res = await window.lumen.runTests({ id: testRunId, cmd, cwd: currentRepo });
     testStatus.textContent = `${res.code === 0 ? "passed" : "exited with " + res.code} in ${(res.durationMs / 1000).toFixed(1)}s`;
-    // refresh coverage after tests
+    // refresh coverage + diff after tests
     if (currentRepo) {
       try {
         const cov = await window.lumen.scanCoverage(currentRepo);
         currentCoverage = cov.coverage;
         testFrameworkEl.textContent = cov.framework;
-        renderReportUi();
-      } catch {
-        // ignore
+      } catch { /* keep previous coverage */ }
+      if (isGitRepo) {
+        try {
+          currentDiff = await window.lumen.gitChangedFiles(currentRepo);
+          if (currentDiff) diffHint.textContent = `${currentDiff.files.length} changed vs ${currentDiff.base}`;
+        } catch { /* diff is optional */ }
       }
+      renderReportUi();
     }
   } catch (err) {
     testStatus.textContent = `error: ${(err as Error).message}`;

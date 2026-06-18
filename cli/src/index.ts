@@ -12,9 +12,18 @@ import {
 } from "@ajmal_n/lumen-core";
 
 import { downloadsDir } from "./paths";
-import { safeSlug, timestamp, normalizeFormat, parseThreshold, Format } from "./util";
+import {
+  safeSlug,
+  timestamp,
+  normalizeFormat,
+  parseThreshold,
+  filterCoverage,
+  formatDiffCoverageReport,
+  Format,
+} from "./util";
+import { isGitRepo, getChangedFiles } from "./git";
 
-const VERSION = "0.5.0";
+const VERSION = "0.6.0";
 
 const program = new Command();
 
@@ -42,6 +51,14 @@ program
     "-t, --threshold <pct>",
     "Fail (non-zero exit) if total line coverage is below this percent",
   )
+  .option(
+    "--diff [base]",
+    "Check coverage only for files changed since base branch (default: auto-detect origin/main or origin/master). Pass --all to check all files instead.",
+  )
+  .option(
+    "--all",
+    "Check coverage for all files in the project (overrides --diff)",
+  )
   .action(
     (
       targetPath: string,
@@ -53,6 +70,8 @@ program
         coverageDir?: string;
         coverage?: boolean;
         threshold?: string;
+        diff?: string | boolean;
+        all?: boolean;
       },
     ) => {
       const resolved = path.resolve(targetPath);
@@ -75,6 +94,83 @@ program
         if (!opts.printPath) process.stdout.write(msg);
       };
 
+      const isDiffMode = !opts.all && opts.diff !== undefined;
+
+      if (isDiffMode) {
+        const base = typeof opts.diff === "string" ? opts.diff : undefined;
+        const gitAvailable = isGitRepo(resolved);
+
+        if (!gitAvailable) {
+          process.stderr.write(
+            "lumen: not a git repository — running full project coverage check instead\n\n",
+          );
+        }
+
+        let coverage: CoverageReport | null = null;
+        if (opts.coverage !== false) {
+          coverage = findCoverage(resolved, { coverageDir: opts.coverageDir });
+        }
+
+        if (gitAvailable) {
+          log("Detecting changed files…\n");
+          let changedFiles: string[] = [];
+          let resolvedBase = "";
+          let current = "unknown";
+          try {
+            const git = getChangedFiles(resolved, base);
+            changedFiles = git.files;
+            resolvedBase = git.base;
+            current = git.current;
+          } catch {
+            process.stderr.write("lumen: git diff failed — falling back to full coverage\n\n");
+          }
+
+          if (changedFiles.length === 0) {
+            process.stderr.write(
+              `lumen: no changed files detected vs ${resolvedBase || "base branch"} — showing full project coverage\n\n`,
+            );
+          } else {
+            log(`Branch : ${current} → ${resolvedBase}\n`);
+            log(`Changed: ${changedFiles.length} file${changedFiles.length !== 1 ? "s" : ""}\n`);
+            const filteredCov = coverage ? filterCoverage(coverage, changedFiles) : null;
+            const hasCovForDiff = filteredCov && filteredCov.files.length > 0;
+            if (!hasCovForDiff) {
+              process.stderr.write(
+                "lumen: no coverage data found for changed files — showing full project coverage\n\n",
+              );
+            } else {
+              const report = formatDiffCoverageReport({
+                base: resolvedBase,
+                current,
+                changedFiles,
+                coverage: filteredCov,
+                threshold,
+              });
+              process.stdout.write("\n" + report + "\n");
+              if (typeof threshold === "number" && filteredCov.total.lines.pct < threshold) {
+                process.exit(2);
+              }
+              return;
+            }
+          }
+        }
+
+        // fallback: full project coverage output
+        log("Scanning " + resolved + "...\n");
+        const framework = detectFramework(resolved);
+        log(`Detected test framework: ${framework}\n`);
+        if (coverage) {
+          log(`Coverage: lines ${coverage.total.lines.pct.toFixed(1)}% · functions ${coverage.total.functions.pct.toFixed(1)}% · branches ${coverage.total.branches.pct.toFixed(1)}% (${coverage.files.length} files)\n`);
+        } else {
+          log("No coverage report found.\n");
+        }
+        if (coverage && typeof threshold === "number" && coverage.total.lines.pct < threshold) {
+          process.stderr.write(`lumen: coverage ${coverage.total.lines.pct.toFixed(1)}% is below threshold ${threshold}%\n`);
+          process.exit(2);
+        }
+        return;
+      }
+
       log(`Scanning ${resolved}...\n`);
       const stats = scanRepo(resolved);
 
@@ -89,7 +185,7 @@ program
           );
         } else {
           log(
-            "No coverage report found. Run your test runner with coverage enabled (e.g. `jest --coverage`, `vitest run --coverage`, `nx test --coverage`).\n",
+            "No coverage report found. Run your test runner with coverage enabled (e.g. `jest --coverage`, `vitest run --coverage`).\n",
           );
         }
       }
@@ -103,10 +199,10 @@ program
       if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 
       const ext = format === "markdown" ? "md" : "html";
-      const base = opts.name
+      const outBase = opts.name
         ? safeSlug(opts.name)
         : `lumen-${safeSlug(stats.rootName)}-${timestamp()}`;
-      const outFile = path.join(outDir, `${base}.${ext}`);
+      const outFile = path.join(outDir, `${outBase}.${ext}`);
       fs.writeFileSync(outFile, content, "utf8");
 
       if (opts.printPath) {

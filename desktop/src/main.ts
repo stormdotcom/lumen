@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, shell, Menu } from "electron";
 import * as path from "path";
 import * as fs from "fs";
 import * as os from "os";
-import { spawn, ChildProcess } from "child_process";
+import { spawn, ChildProcess, execSync } from "child_process";
 import {
   scanRepo,
   renderReport,
@@ -147,8 +147,74 @@ ipcMain.handle("report:export", async (_evt, args: ExportArgs): Promise<string |
     args.format === "markdown"
       ? renderMarkdown(args.stats, { coverage: args.coverage, aiSummary: args.ai })
       : renderReport(args.stats, { coverage: args.coverage, aiSummary: args.ai });
-  fs.writeFileSync(result.filePath, content, "utf8");
+  try {
+    fs.mkdirSync(path.dirname(result.filePath), { recursive: true });
+    fs.writeFileSync(result.filePath, content, "utf8");
+  } catch (err) {
+    throw new Error(`Failed to save report: ${(err as Error).message}`);
+  }
   return result.filePath;
+});
+
+// ----- git helpers -----
+function gitExec(args: string, cwd: string): string {
+  return execSync(`git ${args}`, {
+    cwd,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    timeout: 8000,
+  }).trim();
+}
+
+function gitIsRepo(cwd: string): boolean {
+  try { gitExec("rev-parse --git-dir", cwd); return true; } catch { return false; }
+}
+
+function gitDetectBase(cwd: string): string {
+  for (const ref of ["origin/main", "origin/master", "main", "master"]) {
+    try { gitExec(`rev-parse --verify ${ref}`, cwd); return ref; } catch { /* next */ }
+  }
+  try { gitExec("rev-parse HEAD~1", cwd); return "HEAD~1"; } catch { return ""; }
+}
+
+function gitChangedFiles(cwd: string, base?: string): { files: string[]; base: string; current: string } {
+  let current = "unknown";
+  try { current = gitExec("rev-parse --abbrev-ref HEAD", cwd); } catch { /* ok */ }
+  const resolvedBase = base || gitDetectBase(cwd);
+  if (!resolvedBase) return { files: [], base: "", current };
+  try {
+    const mergeBase = gitExec(`merge-base HEAD ${resolvedBase}`, cwd);
+    const committed = gitExec(`diff --name-only ${mergeBase}`, cwd);
+    let uncommitted = "";
+    try { uncommitted = gitExec("diff --name-only HEAD", cwd); } catch { /* ok */ }
+    const all = new Set(
+      [...committed.split("\n"), ...uncommitted.split("\n")]
+        .map((l) => l.replace(/\\/g, "/").trim())
+        .filter(Boolean),
+    );
+    return { files: [...all].sort(), base: resolvedBase, current };
+  } catch {
+    try {
+      const out = gitExec(`diff --name-only ${resolvedBase}`, cwd);
+      return { files: out.split("\n").map((l) => l.trim()).filter(Boolean).sort(), base: resolvedBase, current };
+    } catch {
+      return { files: [], base: resolvedBase, current };
+    }
+  }
+}
+
+ipcMain.handle("git:is-repo", async (_evt, dir: string): Promise<boolean> => {
+  try { return gitIsRepo(dir); } catch { return false; }
+});
+
+export interface GitDiffResult { files: string[]; base: string; current: string; }
+ipcMain.handle("git:changed-files", async (_evt, dir: string, base?: string): Promise<GitDiffResult | null> => {
+  try {
+    if (!gitIsRepo(dir)) return null;
+    return gitChangedFiles(dir, base);
+  } catch {
+    return null;
+  }
 });
 
 ipcMain.handle("shell:reveal", async (_evt, filePath: string): Promise<void> => {

@@ -27,6 +27,10 @@ const api = {
   reveal: (filePath: string): Promise<void> => ipcRenderer.invoke("shell:reveal", filePath),
   openPath: (p: string): Promise<void> => ipcRenderer.invoke("shell:open-path", p),
 
+  gitIsRepo: (dir: string): Promise<boolean> => ipcRenderer.invoke("git:is-repo", dir),
+  gitChangedFiles: (dir: string, base?: string): Promise<{ files: string[]; base: string; current: string } | null> =>
+    ipcRenderer.invoke("git:changed-files", dir, base),
+
   getSettings: (): Promise<Settings> => ipcRenderer.invoke("settings:get"),
   setSettings: (next: Partial<Settings>): Promise<Settings> =>
     ipcRenderer.invoke("settings:set", next),

@@ -12,7 +12,8 @@ import {
 
 import { downloadsDir, fileUrl } from "./paths";
 import { runTestCommand, lastLines } from "./runner";
-import { safeSlug, timestamp } from "./util";
+import { safeSlug, timestamp, filterCoverage, formatDiffCoverageReport } from "./util";
+import { isGitRepo, getChangedFiles } from "./git";
 import {
   probeAll,
   summarize,
@@ -31,6 +32,7 @@ const importEsm: <T>(specifier: string) => Promise<T> = new Function(
 ) as <T>(specifier: string) => Promise<T>;
 
 type ActionValue =
+  | "diff-coverage"
   | "test-terminal"
   | "test-html"
   | "test-md"
@@ -142,12 +144,21 @@ async function runIteration(p: Clack, state: IterState): Promise<void> {
   const probes = await probeAll();
   const availableProviders = probes.filter((pp) => pp.available);
 
-  const choices: MenuChoice[] = [
-    { value: "test-terminal", label: "Run tests · show summary in terminal" },
+  const isGit = isGitRepo(state.repoPath);
+  const choices: MenuChoice[] = [];
+  if (isGit) {
+    choices.push({
+      value: "diff-coverage",
+      label: "Coverage check · changed files (diff vs base branch)",
+      hint: "fast · shows only files you changed",
+    });
+  }
+  choices.push(
+    { value: "test-terminal", label: "Coverage check · all files (full project)" },
     { value: "test-html", label: "Run tests · generate HTML report" },
     { value: "test-md", label: "Run tests · generate Markdown report" },
     { value: "scan-only", label: "Scan only (skip running tests)" },
-  ];
+  );
   if (availableProviders.length) {
     const names = availableProviders.map((pp) => providerLabel(pp.provider)).join(", ");
     choices.push({
@@ -341,6 +352,40 @@ async function runIteration(p: Clack, state: IterState): Promise<void> {
       cancelIfNeeded(p, proceed);
       if (!proceed) return;
     }
+  }
+
+  if (action === "diff-coverage") {
+    const diffSpin = p.spinner();
+    diffSpin.start("Detecting changed files…");
+    let diffResult: Awaited<ReturnType<typeof getChangedFiles>>;
+    try {
+      diffResult = getChangedFiles(state.repoPath);
+    } catch {
+      diffResult = { files: [], base: "", current: "unknown" };
+    }
+
+    const noChanged = diffResult.files.length === 0;
+    const filteredCov = !noChanged && coverage ? filterCoverage(coverage, diffResult.files) : null;
+    const noMatchingCov = !noChanged && coverage && (!filteredCov || filteredCov.files.length === 0);
+
+    if (noChanged) {
+      diffSpin.stop(`No changed files detected vs ${diffResult.base || "base branch"} — showing full project coverage`);
+      p.note(formatTerminalSummary({ framework, stats, coverage, testResult }), "Coverage (full project)");
+    } else if (noMatchingCov) {
+      diffSpin.stop(`${diffResult.files.length} changed files, but none found in coverage data — showing full project coverage`);
+      p.log.warn("Changed files:\n" + diffResult.files.map((f) => `  ${f}`).join("\n"));
+      p.note(formatTerminalSummary({ framework, stats, coverage, testResult }), "Coverage (full project)");
+    } else {
+      diffSpin.stop(`${diffResult.files.length} changed file${diffResult.files.length !== 1 ? "s" : ""} vs ${diffResult.base}`);
+      const report = formatDiffCoverageReport({
+        base: diffResult.base,
+        current: diffResult.current,
+        changedFiles: diffResult.files,
+        coverage: filteredCov,
+      });
+      process.stdout.write("\n" + report + "\n\n");
+    }
+    return;
   }
 
   if (action === "test-terminal") {
