@@ -14,7 +14,7 @@ import {
 import { downloadsDir } from "./paths";
 import { safeSlug, timestamp, normalizeFormat, parseThreshold, Format } from "./util";
 
-const VERSION = "0.4.0";
+const VERSION = "0.5.0";
 
 const program = new Command();
 
