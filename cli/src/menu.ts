@@ -22,6 +22,13 @@ import {
   providerLabel,
   Provider,
   ProviderProbe,
+  selectCandidates,
+  pickHighImpactFiles,
+  generateTestCases,
+  readSourceFile,
+  resolveSourcePath,
+  FileCandidate,
+  TestGenFocus,
 } from "./ai";
 
 type Clack = typeof import("@clack/prompts");
@@ -245,6 +252,13 @@ async function runIteration(p: Clack, state: IterState): Promise<void> {
     aiModel = String(modelChoice);
   }
 
+  let changedFiles: string[] = [];
+  if (isGit) {
+    try {
+      changedFiles = getChangedFiles(state.repoPath).files;
+    } catch { /* ignore */ }
+  }
+
   const runTests = state.testCmd.length > 0 && action !== "scan-only";
 
   let testResult: { code: number; durationMs: number; stdout: string; stderr: string; truncated?: boolean } | null = null;
@@ -385,6 +399,14 @@ async function runIteration(p: Clack, state: IterState): Promise<void> {
       });
       process.stdout.write("\n" + report + "\n\n");
     }
+
+    if (coverage && availableProviders.length) {
+      const wantGen = await p.confirm({ message: "Generate test cases for these files with AI?", initialValue: false });
+      if (!p.isCancel(wantGen) && wantGen) {
+        const { provider: prov, model: mod } = await promptProviderModel(p, availableProviders);
+        if (prov && mod) await runTestGenFlow(p, state, coverage, framework, prov, mod, diffResult.files);
+      }
+    }
     return;
   }
 
@@ -399,7 +421,12 @@ async function runIteration(p: Clack, state: IterState): Promise<void> {
   }
 
   if (action === "ai") {
-    if (ai) p.note(ai.text, `AI Analysis · ${ai.model}`);
+    if (ai) {
+      printAiOutput(ai.text, ai.model);
+      if (coverage && aiProvider && aiModel) {
+        await runTestGenFlow(p, state, coverage, framework, aiProvider, aiModel, changedFiles);
+      }
+    }
     return;
   }
 
@@ -466,4 +493,266 @@ function formatTerminalSummary(args: {
     lines.push("Coverage : no report found (run with coverage flag e.g. `jest --coverage`)");
   }
   return lines.join("\n");
+}
+
+const ANSI_RESET = "\x1b[0m";
+const ANSI_BOLD = "\x1b[1m";
+const ANSI_DIM = "\x1b[2m";
+const ANSI_CYAN = "\x1b[36m";
+const ANSI_GREEN = "\x1b[32m";
+const ANSI_YELLOW = "\x1b[33m";
+
+function printAiOutput(text: string, model: string): void {
+  const hr = ANSI_DIM + "─".repeat(62) + ANSI_RESET;
+  process.stdout.write("\n" + hr + "\n");
+  process.stdout.write(ANSI_BOLD + ANSI_CYAN + "  AI Analysis" + ANSI_RESET + ANSI_DIM + " · " + ANSI_RESET + model + "\n");
+  process.stdout.write(hr + "\n\n");
+
+  const paragraphs = text.split(/\n{2,}/);
+  for (const para of paragraphs) {
+    const trimmed = para.trim();
+    if (!trimmed) continue;
+    const isSuggestion = /^\d+[).]/.test(trimmed);
+    if (isSuggestion) {
+      const numbered = trimmed.split(/\n/).map((line) => {
+        const match = line.match(/^(\d+[).]\s*)(.*)/s);
+        if (match) return ANSI_BOLD + ANSI_GREEN + match[1] + ANSI_RESET + match[2];
+        return line;
+      });
+      process.stdout.write(numbered.join("\n") + "\n\n");
+    } else {
+      process.stdout.write("  " + trimmed.replace(/\n/g, "\n  ") + "\n\n");
+    }
+  }
+
+  process.stdout.write(hr + "\n\n");
+}
+
+async function promptProviderModel(
+  p: Clack,
+  availableProviders: ProviderProbe[],
+): Promise<{ provider: Provider | undefined; model: string | undefined }> {
+  let chosen: ProviderProbe;
+  if (availableProviders.length === 1) {
+    chosen = availableProviders[0];
+  } else {
+    const providerChoice = await p.select({
+      message: "Choose an AI provider for test generation",
+      options: availableProviders.map((pp) => ({
+        value: pp.provider,
+        label: providerLabel(pp.provider),
+        hint: pp.detail,
+      })),
+    });
+    if (p.isCancel(providerChoice)) return { provider: undefined, model: undefined };
+    chosen = availableProviders.find((pp) => pp.provider === providerChoice)!;
+  }
+  const def = pickDefaultModel(chosen.provider, chosen.models);
+  const modelChoice = await p.select({
+    message: `Choose a ${providerLabel(chosen.provider)} model`,
+    initialValue: def,
+    options: chosen.models.map((m) => ({ value: m, label: m })),
+  });
+  if (p.isCancel(modelChoice)) return { provider: undefined, model: undefined };
+  return { provider: chosen.provider, model: String(modelChoice) };
+}
+
+async function runTestGenFlow(
+  p: Clack,
+  state: IterState,
+  coverage: CoverageReport,
+  framework: string,
+  aiProvider: Provider,
+  aiModel: string,
+  changedFiles: string[],
+): Promise<void> {
+  const wantGen = await p.confirm({
+    message: "Generate test cases for coverage gaps?",
+    initialValue: false,
+  });
+  if (p.isCancel(wantGen) || !wantGen) return;
+
+  const THRESHOLD = 80;
+  const focusOptions: { value: TestGenFocus; label: string; hint: string }[] = [];
+  if (changedFiles.length) {
+    focusOptions.push({ value: "diff", label: "Changed files only", hint: `${changedFiles.length} file${changedFiles.length !== 1 ? "s" : ""} vs base branch` });
+  }
+  const flaggedCount = coverage.files.filter((f) => f.lines.pct < THRESHOLD).length;
+  if (flaggedCount) {
+    focusOptions.push({ value: "flagged", label: `Flagged files (below ${THRESHOLD}% threshold)`, hint: `${flaggedCount} files` });
+  }
+  const lowCount = coverage.files.filter((f) => f.lines.pct < 30).length;
+  if (lowCount) {
+    focusOptions.push({ value: "low", label: "Very low coverage (< 30%)", hint: `${lowCount} files` });
+  }
+  focusOptions.push({ value: "ai-pick", label: "AI picks high-impact files", hint: "AI identifies where tests matter most" });
+
+  const focusRaw = await p.multiselect({
+    message: "Which files should we target?",
+    options: focusOptions,
+    required: true,
+  });
+  if (p.isCancel(focusRaw)) return;
+  const focus = focusRaw as TestGenFocus[];
+
+  let candidates = selectCandidates(coverage, focus.filter((f) => f !== "ai-pick"), changedFiles, THRESHOLD);
+
+  if (focus.includes("ai-pick")) {
+    const rankSpin = p.spinner();
+    rankSpin.start(`Asking ${aiModel} to identify high-impact files…`);
+    try {
+      const ctrl = new AbortController();
+      const onSigint = () => ctrl.abort();
+      process.once("SIGINT", onSigint);
+      const ranked = await pickHighImpactFiles({
+        provider: aiProvider,
+        model: aiModel,
+        framework,
+        coverage,
+        signal: ctrl.signal,
+        maxFiles: 8,
+      });
+      process.removeListener("SIGINT", onSigint);
+      const seen = new Set(candidates.map((c) => c.file.path));
+      for (const filePath of ranked) {
+        const found = coverage.files.find((f) => f.path === filePath || f.path.endsWith("/" + filePath) || filePath.endsWith("/" + f.path));
+        if (found && !seen.has(found.path)) {
+          seen.add(found.path);
+          candidates.push({ file: found, reason: "AI-identified high impact" });
+        }
+      }
+      rankSpin.stop(`${ranked.length} high-impact files identified`);
+    } catch (err) {
+      rankSpin.stop(`AI ranking failed: ${(err as Error).message}`, 1);
+    }
+  }
+
+  if (!candidates.length) {
+    p.log.warn("No matching files found for the selected focus areas.");
+    return;
+  }
+
+  const MAX_FILES = 10;
+  if (candidates.length > MAX_FILES) {
+    candidates = candidates
+      .slice()
+      .sort((a, b) => (a.file.lines.total - a.file.lines.covered) - (b.file.lines.total - b.file.lines.covered))
+      .reverse()
+      .slice(0, MAX_FILES);
+    p.log.warn(`Limiting to top ${MAX_FILES} highest-impact files.`);
+  }
+
+  const fileChoices = await p.multiselect({
+    message: `Select files to generate tests for (${framework})`,
+    options: candidates.map((c) => ({
+      value: c.file.path,
+      label: c.file.path,
+      hint: `${c.reason} · lines ${c.file.lines.pct.toFixed(1)}% · fns ${c.file.functions.pct.toFixed(1)}% · branches ${c.file.branches.pct.toFixed(1)}%`,
+    })),
+    required: true,
+  });
+  if (p.isCancel(fileChoices)) return;
+  const selectedPaths = fileChoices as string[];
+
+  const writeChoice = await p.select({
+    message: "Output test cases to…",
+    options: [
+      { value: "console", label: "Console (print to terminal)" },
+      { value: "file", label: "Write test files alongside source" },
+      { value: "both", label: "Both" },
+    ],
+  });
+  if (p.isCancel(writeChoice)) return;
+  const outputMode = String(writeChoice) as "console" | "file" | "both";
+
+  const testExt = deriveTestExt(framework);
+
+  for (const filePath of selectedPaths) {
+    const candidate = candidates.find((c) => c.file.path === filePath)!;
+    const absPath = resolveSourcePath(state.repoPath, filePath);
+    const fileContent = readSourceFile(absPath);
+    if (!fileContent) {
+      p.log.warn(`Could not read: ${filePath}`);
+      continue;
+    }
+
+    const genSpin = p.spinner();
+    genSpin.start(`Generating tests for ${path.basename(filePath)}…`);
+
+    let generated = "";
+    const ctrl = new AbortController();
+    const onSigint = () => ctrl.abort();
+    process.once("SIGINT", onSigint);
+
+    try {
+      generated = await generateTestCases({
+        provider: aiProvider,
+        model: aiModel,
+        filePath,
+        fileContent,
+        framework,
+        linePct: candidate.file.lines.pct,
+        branchPct: candidate.file.branches.pct,
+        fnPct: candidate.file.functions.pct,
+        reason: candidate.reason,
+        signal: ctrl.signal,
+      });
+      genSpin.stop(`Tests generated for ${path.basename(filePath)}`);
+    } catch (err) {
+      genSpin.stop(`Failed for ${path.basename(filePath)}: ${(err as Error).message}`, 1);
+      process.removeListener("SIGINT", onSigint);
+      continue;
+    }
+    process.removeListener("SIGINT", onSigint);
+
+    const cleaned = stripCodeFence(generated);
+
+    if (outputMode === "console" || outputMode === "both") {
+      const hr = ANSI_DIM + "─".repeat(62) + ANSI_RESET;
+      process.stdout.write("\n" + hr + "\n");
+      process.stdout.write(ANSI_BOLD + ANSI_YELLOW + `  Tests · ${filePath}` + ANSI_RESET + "\n");
+      process.stdout.write(ANSI_DIM + `  Reason: ${candidate.reason}` + ANSI_RESET + "\n");
+      process.stdout.write(hr + "\n\n");
+      process.stdout.write(cleaned + "\n\n");
+    }
+
+    if (outputMode === "file" || outputMode === "both") {
+      const testPath = deriveTestPath(absPath, testExt);
+      try {
+        if (fs.existsSync(testPath)) {
+          const overwrite = await p.confirm({ message: `Overwrite existing ${path.basename(testPath)}?`, initialValue: false });
+          if (p.isCancel(overwrite) || !overwrite) {
+            p.log.warn(`Skipped: ${testPath}`);
+            continue;
+          }
+        }
+        fs.writeFileSync(testPath, cleaned, "utf8");
+        p.log.success(`Written: ${testPath}`);
+      } catch (err) {
+        p.log.error(`Failed to write ${testPath}: ${(err as Error).message}`);
+      }
+    }
+  }
+}
+
+function deriveTestExt(framework: string): string {
+  const fw = framework.toLowerCase();
+  if (fw.includes("vitest") || fw.includes("jest") || fw.includes("mocha")) return ".test.ts";
+  if (fw.includes("jasmine")) return ".spec.ts";
+  if (fw.includes("pytest") || fw.includes("python")) return "_test.py";
+  if (fw.includes("go")) return "_test.go";
+  return ".test.ts";
+}
+
+function deriveTestPath(absSourcePath: string, testExt: string): string {
+  const parsed = path.parse(absSourcePath);
+  const base = parsed.name.replace(/\.(test|spec)$/, "");
+  return path.join(parsed.dir, base + testExt);
+}
+
+function stripCodeFence(text: string): string {
+  return text
+    .replace(/^```[\w]*\n?/, "")
+    .replace(/\n?```$/, "")
+    .trim();
 }

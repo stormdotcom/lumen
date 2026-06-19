@@ -1,4 +1,5 @@
-import type { CoverageReport } from "@ajmal_n/lumen-core";
+import * as fs from "fs";
+import type { CoverageReport, FileCoverage } from "@ajmal_n/lumen-core";
 
 export type Provider = "ollama" | "openai" | "anthropic";
 
@@ -185,6 +186,168 @@ export function buildPrompt(args: {
   );
 
   return lines.join("\n");
+}
+
+export type TestGenFocus = "diff" | "flagged" | "low" | "ai-pick";
+
+export interface FileCandidate {
+  file: FileCoverage;
+  reason: string;
+}
+
+export function selectCandidates(
+  coverage: CoverageReport,
+  focus: TestGenFocus[],
+  changedFiles: string[],
+  threshold: number,
+): FileCandidate[] {
+  const seen = new Set<string>();
+  const out: FileCandidate[] = [];
+
+  const add = (f: FileCoverage, reason: string) => {
+    if (seen.has(f.path)) return;
+    seen.add(f.path);
+    out.push({ file: f, reason });
+  };
+
+  const normalize = (p: string) => p.replace(/\\/g, "/");
+  const changedSet = new Set(changedFiles.map(normalize));
+
+  if (focus.includes("diff") && changedFiles.length) {
+    for (const f of coverage.files) {
+      const fp = normalize(f.path);
+      const hit = changedSet.has(fp) || [...changedSet].some((c) => fp.endsWith("/" + c) || c.endsWith("/" + fp));
+      if (hit) add(f, "changed file");
+    }
+  }
+
+  if (focus.includes("flagged")) {
+    for (const f of coverage.files) {
+      if (f.lines.pct < threshold) add(f, `below ${threshold}% threshold (${f.lines.pct.toFixed(1)}%)`);
+    }
+  }
+
+  if (focus.includes("low")) {
+    for (const f of coverage.files) {
+      if (f.lines.pct < 30) add(f, `very low coverage (${f.lines.pct.toFixed(1)}%)`);
+    }
+  }
+
+  return out;
+}
+
+export function buildFileRankingPrompt(args: {
+  framework: string;
+  coverage: CoverageReport;
+  maxFiles?: number;
+}): string {
+  const max = args.maxFiles ?? 8;
+  const lines: string[] = [];
+  lines.push(`Test framework: ${args.framework}`);
+  lines.push(`Total line coverage: ${args.coverage.total.lines.pct.toFixed(1)}%`);
+  lines.push("");
+  lines.push("Files sorted by impact on total coverage (lines uncovered, descending):");
+
+  const byImpact = args.coverage.files
+    .slice()
+    .sort((a, b) => (b.lines.total - b.lines.covered) - (a.lines.total - a.lines.covered))
+    .slice(0, 20);
+
+  for (const f of byImpact) {
+    const uncovered = f.lines.total - f.lines.covered;
+    lines.push(
+      `- ${f.path}: ${f.lines.pct.toFixed(1)}% lines, ${f.branches.pct.toFixed(1)}% branches, ${f.functions.pct.toFixed(1)}% functions, ${uncovered} uncovered lines`,
+    );
+  }
+
+  lines.push("");
+  lines.push(
+    `Identify the top ${max} files where writing tests would have the highest impact on overall coverage. ` +
+    `Consider: uncovered lines, branch complexity (low branch %), function coverage, and how central the file is likely to be. ` +
+    `Reply with ONLY a JSON array of file paths, e.g. ["src/foo.ts","src/bar.ts"]. No explanation.`,
+  );
+
+  return lines.join("\n");
+}
+
+export async function pickHighImpactFiles(args: {
+  provider: Provider;
+  model: string;
+  framework: string;
+  coverage: CoverageReport;
+  signal?: AbortSignal;
+  maxFiles?: number;
+}): Promise<string[]> {
+  const prompt = buildFileRankingPrompt({ framework: args.framework, coverage: args.coverage, maxFiles: args.maxFiles });
+  const raw = await summarize({ provider: args.provider, model: args.model, prompt, signal: args.signal });
+  const match = raw.match(/\[[\s\S]*?\]/);
+  if (!match) return [];
+  try {
+    const parsed = JSON.parse(match[0]) as unknown;
+    if (Array.isArray(parsed)) return parsed.filter((x): x is string => typeof x === "string");
+  } catch { /* ignore */ }
+  return [];
+}
+
+export function buildTestCasePrompt(args: {
+  filePath: string;
+  fileContent: string;
+  framework: string;
+  linePct: number;
+  branchPct: number;
+  fnPct: number;
+  reason: string;
+}): string {
+  const lines: string[] = [];
+  lines.push(`Test framework: ${args.framework}`);
+  lines.push(`File: ${args.filePath}`);
+  lines.push(`Current coverage — lines: ${args.linePct.toFixed(1)}%, branches: ${args.branchPct.toFixed(1)}%, functions: ${args.fnPct.toFixed(1)}%`);
+  lines.push(`Reason selected: ${args.reason}`);
+  lines.push("");
+  lines.push("Source file:");
+  lines.push("```");
+  lines.push(args.fileContent.slice(0, 6000));
+  if (args.fileContent.length > 6000) lines.push("// ... (truncated)");
+  lines.push("```");
+  lines.push("");
+  lines.push(
+    `Write comprehensive test cases using ${args.framework} that target the gaps in coverage. ` +
+    `Focus on: uncovered branches, error paths, edge cases, and untested functions. ` +
+    `Output ONLY the test file content. Use the same import style as the source. ` +
+    `No explanation before or after the code block.`,
+  );
+  return lines.join("\n");
+}
+
+export async function generateTestCases(args: {
+  provider: Provider;
+  model: string;
+  filePath: string;
+  fileContent: string;
+  framework: string;
+  linePct: number;
+  branchPct: number;
+  fnPct: number;
+  reason: string;
+  signal?: AbortSignal;
+  onDelta?: (delta: string) => void;
+}): Promise<string> {
+  const prompt = buildTestCasePrompt(args);
+  return summarize({ provider: args.provider, model: args.model, prompt, signal: args.signal, onDelta: args.onDelta });
+}
+
+export function readSourceFile(absPath: string): string {
+  try {
+    return fs.readFileSync(absPath, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+export function resolveSourcePath(repoPath: string, filePath: string): string {
+  const p = filePath.replace(/\\/g, "/");
+  if (require("path").isAbsolute(p)) return p;
+  return require("path").join(repoPath, p);
 }
 
 const SYSTEM_PROMPT =
