@@ -19,6 +19,7 @@ interface FileCoverage {
   path: string;
   lines: CoverageMetric; statements: CoverageMetric;
   functions: CoverageMetric; branches: CoverageMetric;
+  uncoveredLines?: number[];
 }
 interface CoverageReport {
   root: string;
@@ -44,7 +45,7 @@ interface LumenApi {
   pickDirectory: () => Promise<string | null>;
   scanRepo: (dir: string) => Promise<RepoStats>;
   scanCoverage: (dir: string) => Promise<{ framework: string; coverage: CoverageReport | null }>;
-  exportReport: (args: { stats: RepoStats; coverage: CoverageReport | null; ai: AiSummary | null; format: "html" | "markdown" }) => Promise<string | null>;
+  exportReport: (args: { stats: RepoStats; coverage: CoverageReport | null; ai: AiSummary | null; format: "html" | "markdown" | "json" }) => Promise<string | null>;
   reveal: (filePath: string) => Promise<void>;
   openPath: (p: string) => Promise<void>;
   gitIsRepo: (dir: string) => Promise<boolean>;
@@ -459,7 +460,7 @@ chkDiff.addEventListener("change", () => {
   renderReportUi();
 });
 
-async function exportReport(format: "html" | "markdown") {
+async function exportReport(format: "html" | "markdown" | "json") {
   if (!currentStats) return;
   try {
     const filePath = await window.lumen.exportReport({
@@ -685,7 +686,7 @@ btnRecent.addEventListener("click", (e) => {
 });
 exportMenu.addEventListener("click", (e) => {
   const target = e.target as HTMLElement;
-  const fmt = target.getAttribute("data-fmt") as "html" | "markdown" | null;
+  const fmt = target.getAttribute("data-fmt") as "html" | "markdown" | "json" | null;
   if (fmt) { exportMenu.classList.add("hidden"); exportReport(fmt); }
 });
 document.addEventListener("click", () => {

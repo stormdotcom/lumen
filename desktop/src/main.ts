@@ -124,29 +124,38 @@ interface ExportArgs {
   stats: RepoStats;
   coverage: CoverageReport | null;
   ai: AiSummary | null;
-  format: "html" | "markdown";
+  format: "html" | "markdown" | "json";
 }
 
 ipcMain.handle("report:export", async (_evt, args: ExportArgs): Promise<string | null> => {
   if (!mainWindow) return null;
-  const ext = args.format === "markdown" ? "md" : "html";
+  const ext = args.format === "markdown" ? "md" : args.format === "json" ? "json" : "html";
   const slug = (args.stats.rootName || "repo").replace(/[^a-z0-9_-]+/gi, "-");
   const defaultName = `lumen-${slug}.${ext}`;
   const defaultPath = path.join(os.homedir(), "Downloads", defaultName);
+  const filterMap: Record<string, { name: string; extensions: string[] }> = {
+    markdown: { name: "Markdown", extensions: ["md"] },
+    json: { name: "JSON", extensions: ["json"] },
+    html: { name: "HTML", extensions: ["html"] },
+  };
   const result = await dialog.showSaveDialog(mainWindow, {
     title: "Save Lumen report",
     defaultPath,
-    filters: [
-      args.format === "markdown"
-        ? { name: "Markdown", extensions: ["md"] }
-        : { name: "HTML", extensions: ["html"] },
-    ],
+    filters: [filterMap[args.format]],
   });
   if (result.canceled || !result.filePath) return null;
-  const content =
-    args.format === "markdown"
-      ? renderMarkdown(args.stats, { coverage: args.coverage, aiSummary: args.ai })
-      : renderReport(args.stats, { coverage: args.coverage, aiSummary: args.ai });
+  let content: string;
+  if (args.format === "json") {
+    content = JSON.stringify(
+      { coverage: args.coverage, stats: args.stats, timestamp: new Date().toISOString() },
+      null,
+      2,
+    );
+  } else if (args.format === "markdown") {
+    content = renderMarkdown(args.stats, { coverage: args.coverage, aiSummary: args.ai });
+  } else {
+    content = renderReport(args.stats, { coverage: args.coverage, aiSummary: args.ai });
+  }
   try {
     fs.mkdirSync(path.dirname(result.filePath), { recursive: true });
     fs.writeFileSync(result.filePath, content, "utf8");

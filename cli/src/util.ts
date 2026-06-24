@@ -1,4 +1,6 @@
 import type { CoverageReport, FileCoverage } from "@ajmal_n/lumen-core";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const minimatch = require("minimatch") as (path: string, pattern: string) => boolean;
 
 export function filterCoverage(cov: CoverageReport, changedFiles: string[]): CoverageReport {
   const changedSet = new Set(changedFiles.map((f) => f.replace(/\\/g, "/")));
@@ -114,13 +116,57 @@ export function timestamp(): string {
   return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 }
 
-export type Format = "html" | "markdown";
+export type Format = "html" | "markdown" | "json";
 
 export function normalizeFormat(input: string): Format {
   const v = input.toLowerCase();
   if (v === "md" || v === "markdown") return "markdown";
   if (v === "html" || v === "htm") return "html";
-  throw new Error(`Unknown format: ${input}. Use 'html' or 'markdown'.`);
+  if (v === "json") return "json";
+  throw new Error(`Unknown format: ${input}. Use 'html', 'markdown', or 'json'.`);
+}
+
+export function formatUncoveredRanges(lines: number[]): string {
+  if (lines.length === 0) return "";
+  const sorted = [...lines].sort((a, b) => a - b);
+  const ranges: string[] = [];
+  let start = sorted[0], end = sorted[0];
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] === end + 1) {
+      end = sorted[i];
+    } else {
+      ranges.push(start === end ? String(start) : `${start}-${end}`);
+      start = end = sorted[i];
+    }
+  }
+  ranges.push(start === end ? String(start) : `${start}-${end}`);
+  return ranges.join(", ");
+}
+
+export interface ThresholdViolation {
+  file: string;
+  pattern: string;
+  threshold: number;
+  actual: number;
+}
+
+export function checkPerFileThresholds(
+  files: FileCoverage[],
+  thresholds: Record<string, number>,
+): ThresholdViolation[] {
+  const violations: ThresholdViolation[] = [];
+  const patterns = Object.entries(thresholds);
+  for (const file of files) {
+    for (const [pattern, threshold] of patterns) {
+      if (minimatch(file.path, pattern)) {
+        if (file.lines.pct < threshold) {
+          violations.push({ file: file.path, pattern, threshold, actual: file.lines.pct });
+        }
+        break;
+      }
+    }
+  }
+  return violations;
 }
 
 export function parseThreshold(raw: string | undefined): number | undefined {

@@ -19,11 +19,24 @@ import {
   parseThreshold,
   filterCoverage,
   formatDiffCoverageReport,
+  formatUncoveredRanges,
+  checkPerFileThresholds,
   Format,
 } from "./util";
 import { isGitRepo, getChangedFiles } from "./git";
+import { loadConfig } from "./config";
+import { loadSnapshot, saveSnapshot, compareSnapshot } from "./snapshot";
+import { openFile } from "./open";
 
-const VERSION = "0.6.0";
+const VERSION = "0.8.0";
+
+function printUncoveredLines(coverage: CoverageReport): void {
+  for (const f of coverage.files) {
+    if (f.uncoveredLines && f.uncoveredLines.length > 0) {
+      process.stdout.write(`${f.path}: lines ${formatUncoveredRanges(f.uncoveredLines)}\n`);
+    }
+  }
+}
 
 const program = new Command();
 
@@ -36,7 +49,7 @@ program
   .argument("[path]", "Path to the repository to scan", ".")
   .addOption(
     new Option("-f, --format <fmt>", "Output format")
-      .choices(["html", "markdown", "md"])
+      .choices(["html", "markdown", "md", "json"])
       .default("html"),
   )
   .option("-o, --out <dir>", "Output directory for the report", downloadsDir())
@@ -59,6 +72,13 @@ program
     "--all",
     "Check coverage for all files in the project (overrides --diff)",
   )
+  .option("--json", "Print coverage and repo data as JSON to stdout (machine-readable)")
+  .option("--open", "Open the generated report file with the default OS viewer")
+  .option(
+    "--fail-on-decrease",
+    "Exit 2 if any coverage metric dropped since the last saved snapshot (.lumen/snapshot.json)",
+  )
+  .option("--show-uncovered", "Print uncovered line ranges per file (requires lcov.info)")
   .action(
     (
       targetPath: string,
@@ -72,6 +92,10 @@ program
         threshold?: string;
         diff?: string | boolean;
         all?: boolean;
+        json?: boolean;
+        open?: boolean;
+        failOnDecrease?: boolean;
+        showUncovered?: boolean;
       },
     ) => {
       const resolved = path.resolve(targetPath);
@@ -80,24 +104,44 @@ program
         process.exit(1);
       }
 
+      const config = loadConfig(resolved);
+
+      // CLI flags override config; use getOptionValueSource to detect explicit CLI flags
+      const fmtSource = program.getOptionValueSource("format");
+      const effectiveFormatStr = fmtSource === "cli" ? opts.format : (config.format ?? opts.format);
+
+      const thresholdSource = program.getOptionValueSource("threshold");
+      const effectiveThresholdStr =
+        thresholdSource === "cli"
+          ? opts.threshold
+          : config.threshold !== undefined
+            ? String(config.threshold)
+            : opts.threshold;
+
+      const outSource = program.getOptionValueSource("out");
+      const effectiveOut = outSource === "cli" ? opts.out : (config.outputDir ?? opts.out);
+
       let format: Format;
       let threshold: number | undefined;
       try {
-        format = normalizeFormat(opts.format);
-        threshold = parseThreshold(opts.threshold);
+        format = normalizeFormat(effectiveFormatStr);
+        threshold = parseThreshold(effectiveThresholdStr);
       } catch (err) {
         console.error(`lumen: ${(err as Error).message}`);
         process.exit(1);
       }
 
       const log = (msg: string) => {
-        if (!opts.printPath) process.stdout.write(msg);
+        if (!opts.printPath && !opts.json) process.stdout.write(msg);
       };
 
       const isDiffMode = !opts.all && opts.diff !== undefined;
 
       if (isDiffMode) {
-        const base = typeof opts.diff === "string" ? opts.diff : undefined;
+        const base =
+          typeof opts.diff === "string"
+            ? opts.diff
+            : (config.baseBranch ?? undefined);
         const gitAvailable = isGitRepo(resolved);
 
         if (!gitAvailable) {
@@ -139,6 +183,7 @@ program
                 "lumen: no coverage data found for changed files — showing full project coverage\n\n",
               );
             } else {
+              if (opts.showUncovered) printUncoveredLines(filteredCov);
               const report = formatDiffCoverageReport({
                 base: resolvedBase,
                 current,
@@ -147,8 +192,34 @@ program
                 threshold,
               });
               process.stdout.write("\n" + report + "\n");
+              if (coverage) saveSnapshot(resolved, filteredCov.total);
+              if (opts.failOnDecrease && coverage) {
+                const snap = loadSnapshot(resolved);
+                if (snap) {
+                  const drops = compareSnapshot(snap, filteredCov.total);
+                  if (drops.length > 0) {
+                    for (const d of drops) {
+                      process.stderr.write(
+                        `lumen: coverage decreased: ${d.metric} ${d.before.toFixed(1)}% → ${d.after.toFixed(1)}%\n`,
+                      );
+                    }
+                    process.exit(2);
+                  }
+                }
+              }
               if (typeof threshold === "number" && filteredCov.total.lines.pct < threshold) {
                 process.exit(2);
+              }
+              if (config.thresholds) {
+                const violations = checkPerFileThresholds(filteredCov.files, config.thresholds);
+                if (violations.length > 0) {
+                  for (const v of violations) {
+                    process.stderr.write(
+                      `lumen: ${v.file}: lines ${v.actual.toFixed(1)}% below per-file threshold ${v.threshold}% (pattern: ${v.pattern})\n`,
+                    );
+                  }
+                  process.exit(2);
+                }
               }
               return;
             }
@@ -161,6 +232,7 @@ program
         log(`Detected test framework: ${framework}\n`);
         if (coverage) {
           log(`Coverage: lines ${coverage.total.lines.pct.toFixed(1)}% · functions ${coverage.total.functions.pct.toFixed(1)}% · branches ${coverage.total.branches.pct.toFixed(1)}% (${coverage.files.length} files)\n`);
+          if (opts.showUncovered) printUncoveredLines(coverage);
         } else {
           log("No coverage report found.\n");
         }
@@ -190,15 +262,32 @@ program
         }
       }
 
-      const content =
-        format === "markdown"
-          ? renderMarkdown(stats, { coverage, threshold })
-          : renderReport(stats, { coverage, threshold });
+      if (opts.showUncovered && coverage) printUncoveredLines(coverage);
 
-      const outDir = path.resolve(opts.out);
+      // --json: print to stdout and exit
+      if (opts.json) {
+        process.stdout.write(
+          JSON.stringify({ coverage, stats, timestamp: new Date().toISOString() }, null, 2) + "\n",
+        );
+        return;
+      }
+
+      let content: string;
+      let ext: string;
+      if (format === "json") {
+        content = JSON.stringify({ coverage, stats, timestamp: new Date().toISOString() }, null, 2);
+        ext = "json";
+      } else if (format === "markdown") {
+        content = renderMarkdown(stats, { coverage, threshold });
+        ext = "md";
+      } else {
+        content = renderReport(stats, { coverage, threshold });
+        ext = "html";
+      }
+
+      const outDir = path.resolve(effectiveOut);
       if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 
-      const ext = format === "markdown" ? "md" : "html";
       const outBase = opts.name
         ? safeSlug(opts.name)
         : `lumen-${safeSlug(stats.rootName)}-${timestamp()}`;
@@ -214,12 +303,44 @@ program
         );
       }
 
+      if (opts.open) openFile(outFile);
+
+      if (coverage) {
+        if (opts.failOnDecrease) {
+          const snap = loadSnapshot(resolved);
+          if (snap) {
+            const drops = compareSnapshot(snap, coverage.total);
+            if (drops.length > 0) {
+              for (const d of drops) {
+                process.stderr.write(
+                  `lumen: coverage decreased: ${d.metric} ${d.before.toFixed(1)}% → ${d.after.toFixed(1)}%\n`,
+                );
+              }
+              process.exit(2);
+            }
+          }
+        }
+        saveSnapshot(resolved, coverage.total);
+      }
+
       if (coverage && typeof threshold === "number") {
         const linesPct = coverage.total.lines.pct;
         if (linesPct < threshold) {
           if (!opts.printPath) {
             process.stderr.write(
               `lumen: coverage ${linesPct.toFixed(1)}% is below threshold ${threshold}%\n`,
+            );
+          }
+          process.exit(2);
+        }
+      }
+
+      if (config.thresholds && coverage) {
+        const violations = checkPerFileThresholds(coverage.files, config.thresholds);
+        if (violations.length > 0) {
+          for (const v of violations) {
+            process.stderr.write(
+              `lumen: ${v.file}: lines ${v.actual.toFixed(1)}% below per-file threshold ${v.threshold}% (pattern: ${v.pattern})\n`,
             );
           }
           process.exit(2);

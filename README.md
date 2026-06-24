@@ -23,6 +23,10 @@ lumen .                        # HTML report → ~/Downloads
 lumen . --diff                 # coverage for changed files only (default in git repos)
 lumen . --all -t 80            # full project, fail if line coverage < 80%
 lumen . -f md -o . -n COVERAGE # Markdown report → ./COVERAGE.md
+lumen . --json | jq '.coverage.total.lines.pct'  # machine-readable JSON to stdout
+lumen . --show-uncovered       # print uncovered line ranges per file (requires lcov.info)
+lumen . --fail-on-decrease     # exit 2 if any metric dropped since last snapshot
+lumen . --open                 # open the report in your default browser after generating
 ```
 
 Run without installing:
@@ -76,6 +80,39 @@ Total                   ████████░░   77.3%  ✗
 ```
 
 Gracefully falls back to full-project coverage when there is no git repo, no changed files, or no coverage data for changed files.
+
+## Config file
+
+Persist options per-repo so you don't retype flags. Lumen searches for `lumen.config.json`, `.lumenrc`, or a `"lumen"` key in `package.json`, walking up from the scanned directory to the git root.
+
+```json
+{
+  "threshold": 80,
+  "format": "html",
+  "thresholds": {
+    "src/legacy/**": 40,
+    "src/utils/**": 90
+  }
+}
+```
+
+CLI flags always override config file values. The `thresholds` map accepts glob patterns — the first match wins. Add `.lumen/` to your `.gitignore` to keep snapshots local, or commit it to enforce baselines in CI.
+
+## Coverage enforcement
+
+```bash
+lumen . -t 80                  # exit 2 if total line coverage < 80%
+lumen . --fail-on-decrease     # exit 2 if any metric dropped since last run
+lumen . --show-uncovered       # print exact uncovered line ranges (lcov.info required)
+```
+
+`--fail-on-decrease` stores a baseline in `.lumen/snapshot.json` after every successful run. It catches the "still above 80% but slowly sliding" case that pure thresholds miss.
+
+`--show-uncovered` output (requires `lcov.info`):
+```
+src/util/string.ts: lines 45-72, 88
+src/parser/index.ts: lines 12-15, 88-92
+```
 
 ## AI analysis
 

@@ -287,7 +287,7 @@ lumen [path] [options]
 
 | Flag | Description | Default |
 |---|---|---|
-| `-f, --format <fmt>` | Output format: `html` or `markdown` / `md` | `html` |
+| `-f, --format <fmt>` | Output format: `html`, `markdown` / `md`, or `json` | `html` |
 | `-o, --out <dir>` | Output directory | `~/Downloads` |
 | `-n, --name <name>` | Report filename without extension | `lumen-<repo>-<timestamp>` |
 | `--diff [base]` | Diff coverage: show only changed files vs base branch | off |
@@ -295,6 +295,10 @@ lumen [path] [options]
 | `--coverage-dir <dir>` | Path to coverage directory (auto-discovered if omitted) | auto |
 | `--no-coverage` | Skip coverage detection | off |
 | `-t, --threshold <pct>` | Exit code `2` if line coverage is below this percent | none |
+| `--fail-on-decrease` | Exit `2` if any metric dropped since last snapshot (`.lumen/snapshot.json`) | off |
+| `--show-uncovered` | Print uncovered line ranges per file (requires `lcov.info`) | off |
+| `--json` | Print coverage + repo data as JSON to stdout | off |
+| `--open` | Open the generated report in the default OS viewer | off |
 | `--print-path` | Print only the report file path (machine-readable) | off |
 | `-V, --version` | Print version and exit | |
 | `-h, --help` | Print help | |
@@ -318,15 +322,25 @@ lumen . --all -t 80
 lumen .
 lumen ~/code/myapp --out ~/Desktop --name snapshot
 
+# Open the report in your browser automatically
+lumen . --open
+
 # Markdown
 lumen . -f md
 lumen . -f md -o . -n COVERAGE   # → ./COVERAGE.md
 
+# JSON — machine-readable, pipe to jq
+lumen . --json | jq '.coverage.total.lines.pct'
+lumen . -f json -o .            # → ./lumen-<repo>-<ts>.json (file)
+
+# Show uncovered line ranges (requires lcov.info)
+lumen . --show-uncovered
+
+# Enforce no regressions — exit 2 if coverage dropped since last run
+lumen . --fail-on-decrease
+
 # CI: generate report + gate on coverage
 lumen . --all -f md -o . -n COVERAGE -t 80
-
-# Open the report immediately (Linux / macOS)
-xdg-open "$(lumen . --print-path)"
 
 # Skip coverage entirely
 lumen . --no-coverage
@@ -481,13 +495,49 @@ jobs:
 
 ---
 
+## Config file
+
+Persist flags per-repo. Lumen searches for `lumen.config.json`, `.lumenrc` (JSON), or a `"lumen"` key in `package.json`, walking up from the scanned directory to the git root.
+
+**`lumen.config.json`:**
+```json
+{
+  "threshold": 80,
+  "format": "html",
+  "outputDir": "./reports",
+  "baseBranch": "origin/main",
+  "thresholds": {
+    "src/legacy/**": 40,
+    "src/generated/**": 0,
+    "src/**": 80
+  }
+}
+```
+
+Or in `package.json`:
+```json
+{
+  "lumen": {
+    "threshold": 80
+  }
+}
+```
+
+**Flag precedence:** CLI flags always override config file values.
+
+**`thresholds`:** per-file coverage gates using glob patterns — first match wins. Violations cause exit `2`.
+
+**Snapshot storage:** `--fail-on-decrease` saves `.lumen/snapshot.json` in the project root. Add `.lumen/` to `.gitignore` for local baselines, or commit it to enforce no-regression in CI.
+
+---
+
 ## Exit codes
 
 | Code | Meaning |
 |---|---|
 | `0` | Success |
 | `1` | Invalid path, bad flag, or unexpected error |
-| `2` | Coverage is below the `--threshold` value |
+| `2` | Coverage is below `--threshold`, dropped with `--fail-on-decrease`, or violates a per-file threshold |
 
 ---
 

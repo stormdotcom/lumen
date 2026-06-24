@@ -24,6 +24,7 @@ export interface FileCoverage {
   statements: CoverageMetric;
   functions: CoverageMetric;
   branches: CoverageMetric;
+  uncoveredLines?: number[];
 }
 
 export interface CoverageReport {
@@ -195,12 +196,18 @@ function parseLcov(file: string, absRoot: string): FileCoverage[] {
     const brh = get("BRH");
     const fnf = get("FNF");
     const fnh = get("FNH");
+    const daMatches = [...rec.matchAll(/^DA:(\d+),(\d+)/gm)];
+    const uncoveredLines = daMatches
+      .filter((m) => parseInt(m[2], 10) === 0)
+      .map((m) => parseInt(m[1], 10))
+      .sort((a, b) => a - b);
     out.push({
       path: normalizeRelPath(absRoot, src.trim()),
       lines: { total: lf, covered: lh, pct: pct(lh, lf) },
       statements: { total: lf, covered: lh, pct: pct(lh, lf) },
       functions: { total: fnf, covered: fnh, pct: pct(fnh, fnf) },
       branches: { total: brf, covered: brh, pct: pct(brh, brf) },
+      ...(uncoveredLines.length ? { uncoveredLines } : {}),
     });
   }
   return out;
@@ -218,6 +225,10 @@ function mergeFiles(groups: FileCoverage[][]): FileCoverage[] {
         cur.statements = mergeMetric(cur.statements, f.statements);
         cur.functions = mergeMetric(cur.functions, f.functions);
         cur.branches = mergeMetric(cur.branches, f.branches);
+        if (f.uncoveredLines) {
+          const merged = new Set([...(cur.uncoveredLines ?? []), ...f.uncoveredLines]);
+          cur.uncoveredLines = [...merged].sort((a, b) => a - b);
+        }
       }
     }
   }
