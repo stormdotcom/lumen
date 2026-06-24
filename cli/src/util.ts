@@ -1,4 +1,5 @@
 import type { CoverageReport, FileCoverage } from "@ajmal_n/lumen-core";
+import { theme } from "./theme";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const minimatch = require("minimatch") as (path: string, pattern: string) => boolean;
 
@@ -33,19 +34,14 @@ function sumMetrics(files: FileCoverage[]) {
   };
 }
 
-const BAR_WIDTH = 10;
-const BAR_FILL = "█";
-const BAR_EMPTY = "░";
-
-export function coverageBar(pct: number): string {
-  const filled = Math.round((pct / 100) * BAR_WIDTH);
-  return BAR_FILL.repeat(filled) + BAR_EMPTY.repeat(BAR_WIDTH - filled);
+/** Thin wrapper kept for backward compatibility — delegates to theme */
+export function coverageBar(pct: number, threshold = 80): string {
+  return theme.bar(pct, threshold);
 }
 
+/** Thin wrapper kept for backward compatibility — delegates to theme */
 export function coverageStatus(pct: number, threshold = 80): string {
-  if (pct >= threshold) return "✓";
-  if (pct >= threshold * 0.75) return "⚠";
-  return "✗";
+  return theme.status(pct, threshold);
 }
 
 export function formatDiffCoverageReport(opts: {
@@ -57,7 +53,7 @@ export function formatDiffCoverageReport(opts: {
 }): string {
   const { base, current, changedFiles, coverage, threshold = 80 } = opts;
   const lines: string[] = [];
-  const hr = "─".repeat(60);
+  const hr = theme.hr(60);
 
   lines.push(`Branch : ${current}  →  ${base}`);
   lines.push(`Changed: ${changedFiles.length} file${changedFiles.length !== 1 ? "s" : ""}`);
@@ -83,24 +79,25 @@ export function formatDiffCoverageReport(opts: {
 
   for (const f of coverage.files.slice().sort((a, b) => a.lines.pct - b.lines.pct)) {
     const label = f.path.length > col ? "…" + f.path.slice(-(col - 1)) : f.path.padEnd(col);
-    const bar = coverageBar(f.lines.pct);
-    const status = coverageStatus(f.lines.pct, threshold);
-    lines.push(`${label}  ${bar}  ${f.lines.pct.toFixed(1).padStart(5)}%  ${status}`);
+    const pctStr = theme.pct(f.lines.pct.toFixed(1).padStart(5) + "%", f.lines.pct, threshold);
+    lines.push(`${label}  ${theme.bar(f.lines.pct, threshold)}  ${pctStr}  ${theme.status(f.lines.pct, threshold)}`);
   }
 
   lines.push(hr);
   const t = coverage.total;
-  const totalBar = coverageBar(t.lines.pct);
-  const totalStatus = coverageStatus(t.lines.pct, threshold);
   lines.push(
-    `${"Total (changed files)".padEnd(col)}  ${totalBar}  ${t.lines.pct.toFixed(1).padStart(5)}%  ${totalStatus}`,
+    `${"Total (changed files)".padEnd(col)}  ${theme.bar(t.lines.pct, threshold)}  ${theme.pct(t.lines.pct.toFixed(1).padStart(5) + "%", t.lines.pct, threshold)}  ${theme.status(t.lines.pct, threshold)}`,
   );
-  lines.push(`  lines: ${t.lines.covered}/${t.lines.total}  stmts: ${t.statements.covered}/${t.statements.total}  fns: ${t.functions.covered}/${t.functions.total}  branches: ${t.branches.covered}/${t.branches.total}`);
+  lines.push(theme.dim(`  lines: ${t.lines.covered}/${t.lines.total}  stmts: ${t.statements.covered}/${t.statements.total}  fns: ${t.functions.covered}/${t.functions.total}  branches: ${t.branches.covered}/${t.branches.total}`));
 
   if (threshold) {
     const pass = t.lines.pct >= threshold;
     lines.push("");
-    lines.push(pass ? `✓ Passes ${threshold}% threshold` : `✗ Below ${threshold}% threshold (${t.lines.pct.toFixed(1)}% / ${threshold}%)`);
+    lines.push(
+      pass
+        ? theme.pass(`✓ Passes ${threshold}% threshold`)
+        : theme.fail(`✗ Below ${threshold}% threshold (${t.lines.pct.toFixed(1)}% / ${threshold}%)`),
+    );
   }
 
   return lines.join("\n");

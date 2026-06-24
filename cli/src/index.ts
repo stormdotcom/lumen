@@ -28,7 +28,7 @@ import { loadConfig } from "./config";
 import { loadSnapshot, saveSnapshot, compareSnapshot } from "./snapshot";
 import { openFile } from "./open";
 
-const VERSION = "0.8.0";
+const VERSION = "0.9.0";
 
 function printUncoveredLines(coverage: CoverageReport): void {
   for (const f of coverage.files) {

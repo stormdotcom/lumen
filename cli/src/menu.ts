@@ -13,6 +13,7 @@ import {
 import { downloadsDir, fileUrl } from "./paths";
 import { runTestCommand, lastLines } from "./runner";
 import { safeSlug, timestamp, filterCoverage, formatDiffCoverageReport } from "./util";
+import { theme } from "./theme";
 import { isGitRepo, getChangedFiles } from "./git";
 import {
   probeAll,
@@ -495,17 +496,10 @@ function formatTerminalSummary(args: {
   return lines.join("\n");
 }
 
-const ANSI_RESET = "\x1b[0m";
-const ANSI_BOLD = "\x1b[1m";
-const ANSI_DIM = "\x1b[2m";
-const ANSI_CYAN = "\x1b[36m";
-const ANSI_GREEN = "\x1b[32m";
-const ANSI_YELLOW = "\x1b[33m";
-
 function printAiOutput(text: string, model: string): void {
-  const hr = ANSI_DIM + "─".repeat(62) + ANSI_RESET;
+  const hr = theme.hr(62);
   process.stdout.write("\n" + hr + "\n");
-  process.stdout.write(ANSI_BOLD + ANSI_CYAN + "  AI Analysis" + ANSI_RESET + ANSI_DIM + " · " + ANSI_RESET + model + "\n");
+  process.stdout.write(theme.accent("  AI Analysis") + theme.dim(" · " + model) + "\n");
   process.stdout.write(hr + "\n\n");
 
   const paragraphs = text.split(/\n{2,}/);
@@ -516,7 +510,7 @@ function printAiOutput(text: string, model: string): void {
     if (isSuggestion) {
       const numbered = trimmed.split(/\n/).map((line) => {
         const match = line.match(/^(\d+[).]\s*)(.*)/s);
-        if (match) return ANSI_BOLD + ANSI_GREEN + match[1] + ANSI_RESET + match[2];
+        if (match) return theme.bold(match[1]) + match[2];
         return line;
       });
       process.stdout.write(numbered.join("\n") + "\n\n");
@@ -708,10 +702,10 @@ async function runTestGenFlow(
     const cleaned = stripCodeFence(generated);
 
     if (outputMode === "console" || outputMode === "both") {
-      const hr = ANSI_DIM + "─".repeat(62) + ANSI_RESET;
+      const hr = theme.hr(62);
       process.stdout.write("\n" + hr + "\n");
-      process.stdout.write(ANSI_BOLD + ANSI_YELLOW + `  Tests · ${filePath}` + ANSI_RESET + "\n");
-      process.stdout.write(ANSI_DIM + `  Reason: ${candidate.reason}` + ANSI_RESET + "\n");
+      process.stdout.write(theme.accent(`  Tests · ${filePath}`) + "\n");
+      process.stdout.write(theme.dim(`  Reason: ${candidate.reason}`) + "\n");
       process.stdout.write(hr + "\n\n");
       process.stdout.write(cleaned + "\n\n");
     }
