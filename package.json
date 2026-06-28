@@ -20,5 +20,8 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "dependencies": {
+    "@ajmal_n/lumen-cli": "^0.9.1"
   }
 }
