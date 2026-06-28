@@ -27,6 +27,17 @@ export interface FileCoverage {
   uncoveredLines?: number[];
 }
 
+export interface UntestedFile {
+  path: string;
+  lines: number;
+}
+
+export interface UntestedStats {
+  count: number;
+  totalLines: number;
+  files: UntestedFile[];
+}
+
 export interface CoverageReport {
   root: string;
   framework: CoverageFramework;
@@ -38,6 +49,7 @@ export interface CoverageReport {
     branches: CoverageMetric;
   };
   files: FileCoverage[];
+  untested?: UntestedStats;
 }
 
 const SKIP_DIRS = new Set([
@@ -50,18 +62,9 @@ function emptyMetric(): CoverageMetric {
   return { total: 0, covered: 0, pct: 0 };
 }
 
-function emptyTotals() {
-  return {
-    lines: emptyMetric(),
-    statements: emptyMetric(),
-    functions: emptyMetric(),
-    branches: emptyMetric(),
-  };
-}
-
 function pct(covered: number, total: number): number {
-  if (total === 0) return 100;
-  return Math.round((covered / total) * 1000) / 10;
+  if (total <= 0) return 0;
+  return Math.round((covered / total) * 10000) / 100;
 }
 
 function readJson(file: string): unknown {
@@ -164,12 +167,7 @@ function extractMetric(raw: any): CoverageMetric {
   if (!raw || typeof raw !== "object") return emptyMetric();
   const total = Number(raw.total) || 0;
   const covered = Number(raw.covered) || 0;
-  const explicitPct = raw.pct;
-  return {
-    total,
-    covered,
-    pct: typeof explicitPct === "number" ? explicitPct : pct(covered, total),
-  };
+  return { total, covered, pct: pct(covered, total) };
 }
 
 function parseLcov(file: string, absRoot: string): FileCoverage[] {
@@ -242,22 +240,111 @@ function mergeMetric(a: CoverageMetric, b: CoverageMetric): CoverageMetric {
 }
 
 function totalsFromFiles(files: FileCoverage[]) {
-  const t = emptyTotals();
+  const keys = ["lines", "statements", "functions", "branches"] as const;
+  const acc = {
+    lines: { total: 0, covered: 0 },
+    statements: { total: 0, covered: 0 },
+    functions: { total: 0, covered: 0 },
+    branches: { total: 0, covered: 0 },
+  };
   for (const f of files) {
-    t.lines.total += f.lines.total;
-    t.lines.covered += f.lines.covered;
-    t.statements.total += f.statements.total;
-    t.statements.covered += f.statements.covered;
-    t.functions.total += f.functions.total;
-    t.functions.covered += f.functions.covered;
-    t.branches.total += f.branches.total;
-    t.branches.covered += f.branches.covered;
+    for (const k of keys) {
+      const m = f[k];
+      if (m.total > 0) {
+        acc[k].total += m.total;
+        acc[k].covered += m.covered;
+      }
+    }
   }
-  t.lines.pct = pct(t.lines.covered, t.lines.total);
-  t.statements.pct = pct(t.statements.covered, t.statements.total);
-  t.functions.pct = pct(t.functions.covered, t.functions.total);
-  t.branches.pct = pct(t.branches.covered, t.branches.total);
-  return t;
+  return {
+    lines: { ...acc.lines, pct: pct(acc.lines.covered, acc.lines.total) },
+    statements: { ...acc.statements, pct: pct(acc.statements.covered, acc.statements.total) },
+    functions: { ...acc.functions, pct: pct(acc.functions.covered, acc.functions.total) },
+    branches: { ...acc.branches, pct: pct(acc.branches.covered, acc.branches.total) },
+  };
+}
+
+const UNTESTED_SOURCE_EXTS = new Set([
+  ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs",
+  ".py", ".go", ".rs", ".java", ".kt",
+]);
+
+const UNTESTED_SKIP_DIRS = new Set([
+  ...SKIP_DIRS,
+  "dist", "build", "out", "release",
+  "coverage", "coverage-final", "coverage-reports",
+  "target",
+]);
+
+const TEST_FILE_PATTERNS = [
+  /\.(test|spec)\.[tj]sx?$/,
+  /(^|\/)__tests__\//,
+  /(^|\/)tests?\//,
+  /_test\.(py|go)$/,
+  /(^|\/)test_[^/]+\.py$/,
+  /Test\.java$/,
+  /Tests?\.kt$/,
+  /\.rs$/,
+];
+
+function isTestFile(rel: string): boolean {
+  if (/\.rs$/.test(rel)) return false;
+  for (const re of TEST_FILE_PATTERNS) {
+    if (re.test(rel)) return true;
+  }
+  return false;
+}
+
+function countFileLines(filePath: string): number {
+  try {
+    const stat = fs.statSync(filePath);
+    if (stat.size > 5 * 1024 * 1024) return 0;
+    const buf = fs.readFileSync(filePath);
+    let count = 0;
+    for (let i = 0; i < buf.length; i++) {
+      if (buf[i] === 0x0a) count++;
+    }
+    if (buf.length > 0 && buf[buf.length - 1] !== 0x0a) count++;
+    return count;
+  } catch {
+    return 0;
+  }
+}
+
+function findUntestedFiles(absRoot: string, covered: Set<string>): UntestedStats {
+  const files: UntestedFile[] = [];
+  let totalLines = 0;
+  const norm = (p: string) => p.split(path.sep).join("/");
+
+  const visit = (dir: string, depth: number) => {
+    if (depth > 30) return;
+    let items: fs.Dirent[];
+    try {
+      items = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const item of items) {
+      const full = path.join(dir, item.name);
+      if (item.isDirectory()) {
+        if (UNTESTED_SKIP_DIRS.has(item.name)) continue;
+        visit(full, depth + 1);
+      } else if (item.isFile()) {
+        const ext = path.extname(item.name).toLowerCase();
+        if (!UNTESTED_SOURCE_EXTS.has(ext)) continue;
+        const rel = norm(path.relative(absRoot, full));
+        if (isTestFile(rel)) continue;
+        if (covered.has(rel)) continue;
+        const lines = countFileLines(full);
+        files.push({ path: rel, lines });
+        totalLines += lines;
+      }
+    }
+  };
+  visit(absRoot, 0);
+
+  files.sort((a, b) => b.lines - a.lines);
+  return { count: files.length, totalLines, files };
 }
 
 export function detectFramework(absRoot: string): CoverageFramework {
@@ -342,11 +429,15 @@ export function findCoverage(root: string, options: FindCoverageOptions = {}): C
   const files = mergeFiles(groups).sort((a, b) => a.path.localeCompare(b.path));
   const sources = [...summaryFiles, ...lcovFiles].map((f) => normalizeRelPath(absRoot, f));
 
+  const coveredPaths = new Set(files.map((f) => f.path));
+  const untested = findUntestedFiles(absRoot, coveredPaths);
+
   return {
     root: absRoot,
     framework,
     sources,
     total: totalsFromFiles(files),
     files,
+    untested,
   };
 }

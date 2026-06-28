@@ -13,7 +13,7 @@ function escapeCell(s: string): string {
 }
 
 function fmtMetric(m: CoverageMetric): string {
-  return `${m.pct.toFixed(1)}% (${m.covered.toLocaleString()} / ${m.total.toLocaleString()})`;
+  return `${m.pct.toFixed(2)}% (${m.covered.toLocaleString()} / ${m.total.toLocaleString()})`;
 }
 
 function coverageEmoji(pct: number, threshold?: number): string {
@@ -113,7 +113,7 @@ export function renderMarkdown(stats: RepoStats, options: RenderMarkdownOptions 
     if (typeof options.threshold === "number") {
       const passed = cov.total.lines.pct >= options.threshold;
       lines.push(
-        `> **Threshold:** ${options.threshold}% — ${passed ? ":white_check_mark: passed" : ":x: failed"} (lines ${cov.total.lines.pct.toFixed(1)}%)`,
+        `> **Threshold:** ${options.threshold}% — ${passed ? ":white_check_mark: passed" : ":x: failed"} (lines ${cov.total.lines.pct.toFixed(2)}%)`,
       );
       lines.push("");
     }
@@ -136,8 +136,28 @@ export function renderMarkdown(stats: RepoStats, options: RenderMarkdownOptions 
       lines.push("| --- | ---: | ---: | ---: | ---: |");
       for (const f of worst) {
         lines.push(
-          `| \`${escapeCell(f.path)}\` | ${f.lines.pct.toFixed(1)}% | ${f.statements.pct.toFixed(1)}% | ${f.functions.pct.toFixed(1)}% | ${f.branches.pct.toFixed(1)}% |`,
+          `| \`${escapeCell(f.path)}\` | ${f.lines.pct.toFixed(2)}% | ${f.statements.pct.toFixed(2)}% | ${f.functions.pct.toFixed(2)}% | ${f.branches.pct.toFixed(2)}% |`,
         );
+      }
+      lines.push("");
+    }
+
+    if (cov.untested && cov.untested.count > 0) {
+      lines.push("### Untested source files");
+      lines.push("");
+      lines.push(
+        `> ${cov.untested.count} source file${cov.untested.count !== 1 ? "s" : ""} have no coverage data · ${cov.untested.totalLines.toLocaleString()} lines`,
+      );
+      lines.push("");
+      const top = cov.untested.files.slice(0, 20);
+      lines.push("| File | Lines |");
+      lines.push("| --- | ---: |");
+      for (const f of top) {
+        lines.push(`| \`${escapeCell(f.path)}\` | ${f.lines.toLocaleString()} |`);
+      }
+      if (cov.untested.count > top.length) {
+        lines.push("");
+        lines.push(`> …and ${cov.untested.count - top.length} more`);
       }
       lines.push("");
     }

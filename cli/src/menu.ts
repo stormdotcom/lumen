@@ -76,7 +76,7 @@ function cancelIfNeeded(p: Clack, v: unknown): asserts v is Exclude<typeof v, sy
 }
 
 function pct(n: number) {
-  return `${n.toFixed(1)}%`;
+  return `${n.toFixed(2)}%`;
 }
 
 async function promptRepoPath(p: Clack, initial: string): Promise<string> {
@@ -641,7 +641,7 @@ async function runTestGenFlow(
     options: candidates.map((c) => ({
       value: c.file.path,
       label: c.file.path,
-      hint: `${c.reason} · lines ${c.file.lines.pct.toFixed(1)}% · fns ${c.file.functions.pct.toFixed(1)}% · branches ${c.file.branches.pct.toFixed(1)}%`,
+      hint: `${c.reason} · lines ${c.file.lines.pct.toFixed(2)}% · fns ${c.file.functions.pct.toFixed(2)}% · branches ${c.file.branches.pct.toFixed(2)}%`,
     })),
     required: true,
   });

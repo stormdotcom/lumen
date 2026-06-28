@@ -21,12 +21,15 @@ interface FileCoverage {
   functions: CoverageMetric; branches: CoverageMetric;
   uncoveredLines?: number[];
 }
+interface UntestedFile { path: string; lines: number; }
+interface UntestedStats { count: number; totalLines: number; files: UntestedFile[]; }
 interface CoverageReport {
   root: string;
   framework: string;
   sources: string[];
   total: { lines: CoverageMetric; statements: CoverageMetric; functions: CoverageMetric; branches: CoverageMetric };
   files: FileCoverage[];
+  untested?: UntestedStats;
 }
 
 interface AiSummary { model: string; text: string; }
@@ -155,7 +158,7 @@ function toast(msg: string, ms = 2400) {
   setTimeout(() => toastEl.classList.add("hidden"), ms);
 }
 function uid() { return Math.random().toString(36).slice(2, 10); }
-function pct(n: number) { return `${n.toFixed(1)}%`; }
+function pct(n: number) { return `${n.toFixed(2)}%`; }
 function covTone(p: number): "good" | "warn" | "bad" {
   if (p >= 80) return "good";
   if (p >= 60) return "warn";
@@ -218,9 +221,13 @@ function renderCoverageCards(cov: CoverageReport, diff: GitDiffResult | null): s
   const diffBadge = diff
     ? `<span class="pill" title="${esc(diff.files.length + " changed files vs " + diff.base)}">diff · ${diff.files.length} files</span>`
     : "";
+  const untestedBadge =
+    cov.untested && cov.untested.count > 0
+      ? `<span class="pill" title="${esc(cov.untested.count + " source files have no coverage data")}">untested · ${cov.untested.count} files · ${cov.untested.totalLines.toLocaleString()} lines</span>`
+      : "";
   return `
     <section class="panel cov-panel">
-      <div class="panel-head"><span>Test Coverage <span class="dim">· ${esc(cov.framework)}</span></span><span class="dim">${diffBadge} ${cov.files.length} files</span></div>
+      <div class="panel-head"><span>Test Coverage <span class="dim">· ${esc(cov.framework)}</span></span><span class="dim">${diffBadge} ${untestedBadge} ${cov.files.length} files</span></div>
       <div class="panel-body tight" style="padding:14px 16px;">
         <div class="grid-stats">
           ${card("Lines", cov.total.lines)}

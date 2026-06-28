@@ -150,10 +150,10 @@ export function buildPrompt(args: {
   if (cov) {
     lines.push("");
     lines.push("Coverage totals:");
-    lines.push(`- Lines: ${cov.total.lines.pct.toFixed(1)}% (${cov.total.lines.covered}/${cov.total.lines.total})`);
-    lines.push(`- Statements: ${cov.total.statements.pct.toFixed(1)}%`);
-    lines.push(`- Functions: ${cov.total.functions.pct.toFixed(1)}%`);
-    lines.push(`- Branches: ${cov.total.branches.pct.toFixed(1)}%`);
+    lines.push(`- Lines: ${cov.total.lines.pct.toFixed(2)}% (${cov.total.lines.covered}/${cov.total.lines.total})`);
+    lines.push(`- Statements: ${cov.total.statements.pct.toFixed(2)}%`);
+    lines.push(`- Functions: ${cov.total.functions.pct.toFixed(2)}%`);
+    lines.push(`- Branches: ${cov.total.branches.pct.toFixed(2)}%`);
 
     const worst = cov.files
       .slice()
@@ -163,7 +163,7 @@ export function buildPrompt(args: {
       lines.push("");
       lines.push("Files with lowest line coverage:");
       for (const f of worst) {
-        lines.push(`- ${f.path} — ${f.lines.pct.toFixed(1)}% lines, ${f.branches.pct.toFixed(1)}% branches`);
+        lines.push(`- ${f.path} — ${f.lines.pct.toFixed(2)}% lines, ${f.branches.pct.toFixed(2)}% branches`);
       }
     }
   } else {
@@ -223,13 +223,13 @@ export function selectCandidates(
 
   if (focus.includes("flagged")) {
     for (const f of coverage.files) {
-      if (f.lines.pct < threshold) add(f, `below ${threshold}% threshold (${f.lines.pct.toFixed(1)}%)`);
+      if (f.lines.pct < threshold) add(f, `below ${threshold}% threshold (${f.lines.pct.toFixed(2)}%)`);
     }
   }
 
   if (focus.includes("low")) {
     for (const f of coverage.files) {
-      if (f.lines.pct < 30) add(f, `very low coverage (${f.lines.pct.toFixed(1)}%)`);
+      if (f.lines.pct < 30) add(f, `very low coverage (${f.lines.pct.toFixed(2)}%)`);
     }
   }
 
@@ -244,7 +244,7 @@ export function buildFileRankingPrompt(args: {
   const max = args.maxFiles ?? 8;
   const lines: string[] = [];
   lines.push(`Test framework: ${args.framework}`);
-  lines.push(`Total line coverage: ${args.coverage.total.lines.pct.toFixed(1)}%`);
+  lines.push(`Total line coverage: ${args.coverage.total.lines.pct.toFixed(2)}%`);
   lines.push("");
   lines.push("Files sorted by impact on total coverage (lines uncovered, descending):");
 
@@ -256,7 +256,7 @@ export function buildFileRankingPrompt(args: {
   for (const f of byImpact) {
     const uncovered = f.lines.total - f.lines.covered;
     lines.push(
-      `- ${f.path}: ${f.lines.pct.toFixed(1)}% lines, ${f.branches.pct.toFixed(1)}% branches, ${f.functions.pct.toFixed(1)}% functions, ${uncovered} uncovered lines`,
+      `- ${f.path}: ${f.lines.pct.toFixed(2)}% lines, ${f.branches.pct.toFixed(2)}% branches, ${f.functions.pct.toFixed(2)}% functions, ${uncovered} uncovered lines`,
     );
   }
 
@@ -301,7 +301,7 @@ export function buildTestCasePrompt(args: {
   const lines: string[] = [];
   lines.push(`Test framework: ${args.framework}`);
   lines.push(`File: ${args.filePath}`);
-  lines.push(`Current coverage — lines: ${args.linePct.toFixed(1)}%, branches: ${args.branchPct.toFixed(1)}%, functions: ${args.fnPct.toFixed(1)}%`);
+  lines.push(`Current coverage — lines: ${args.linePct.toFixed(2)}%, branches: ${args.branchPct.toFixed(2)}%, functions: ${args.fnPct.toFixed(2)}%`);
   lines.push(`Reason selected: ${args.reason}`);
   lines.push("");
   lines.push("Source file:");

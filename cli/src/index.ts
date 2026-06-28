@@ -28,7 +28,7 @@ import { loadConfig } from "./config";
 import { loadSnapshot, saveSnapshot, compareSnapshot } from "./snapshot";
 import { openFile } from "./open";
 
-const VERSION = "0.9.0";
+const VERSION = "0.9.1";
 
 function printUncoveredLines(coverage: CoverageReport): void {
   for (const f of coverage.files) {
@@ -200,7 +200,7 @@ program
                   if (drops.length > 0) {
                     for (const d of drops) {
                       process.stderr.write(
-                        `lumen: coverage decreased: ${d.metric} ${d.before.toFixed(1)}% → ${d.after.toFixed(1)}%\n`,
+                        `lumen: coverage decreased: ${d.metric} ${d.before.toFixed(2)}% → ${d.after.toFixed(2)}%\n`,
                       );
                     }
                     process.exit(2);
@@ -215,7 +215,7 @@ program
                 if (violations.length > 0) {
                   for (const v of violations) {
                     process.stderr.write(
-                      `lumen: ${v.file}: lines ${v.actual.toFixed(1)}% below per-file threshold ${v.threshold}% (pattern: ${v.pattern})\n`,
+                      `lumen: ${v.file}: lines ${v.actual.toFixed(2)}% below per-file threshold ${v.threshold}% (pattern: ${v.pattern})\n`,
                     );
                   }
                   process.exit(2);
@@ -231,13 +231,16 @@ program
         const framework = detectFramework(resolved);
         log(`Detected test framework: ${framework}\n`);
         if (coverage) {
-          log(`Coverage: lines ${coverage.total.lines.pct.toFixed(1)}% · functions ${coverage.total.functions.pct.toFixed(1)}% · branches ${coverage.total.branches.pct.toFixed(1)}% (${coverage.files.length} files)\n`);
+          log(`Coverage: lines ${coverage.total.lines.pct.toFixed(2)}% · functions ${coverage.total.functions.pct.toFixed(2)}% · branches ${coverage.total.branches.pct.toFixed(2)}% (${coverage.files.length} files)\n`);
+          if (coverage.untested && coverage.untested.count > 0) {
+            log(`Untested: ${coverage.untested.count} source file${coverage.untested.count !== 1 ? "s" : ""} · ${coverage.untested.totalLines.toLocaleString()} lines (no coverage data)\n`);
+          }
           if (opts.showUncovered) printUncoveredLines(coverage);
         } else {
           log("No coverage report found.\n");
         }
         if (coverage && typeof threshold === "number" && coverage.total.lines.pct < threshold) {
-          process.stderr.write(`lumen: coverage ${coverage.total.lines.pct.toFixed(1)}% is below threshold ${threshold}%\n`);
+          process.stderr.write(`lumen: coverage ${coverage.total.lines.pct.toFixed(2)}% is below threshold ${threshold}%\n`);
           process.exit(2);
         }
         return;
@@ -253,8 +256,13 @@ program
         coverage = findCoverage(resolved, { coverageDir: opts.coverageDir });
         if (coverage) {
           log(
-            `Coverage: lines ${coverage.total.lines.pct.toFixed(1)}% · functions ${coverage.total.functions.pct.toFixed(1)}% · branches ${coverage.total.branches.pct.toFixed(1)}% (${coverage.files.length} files)\n`,
+            `Coverage: lines ${coverage.total.lines.pct.toFixed(2)}% · functions ${coverage.total.functions.pct.toFixed(2)}% · branches ${coverage.total.branches.pct.toFixed(2)}% (${coverage.files.length} files)\n`,
           );
+          if (coverage.untested && coverage.untested.count > 0) {
+            log(
+              `Untested: ${coverage.untested.count} source file${coverage.untested.count !== 1 ? "s" : ""} · ${coverage.untested.totalLines.toLocaleString()} lines (no coverage data)\n`,
+            );
+          }
         } else {
           log(
             "No coverage report found. Run your test runner with coverage enabled (e.g. `jest --coverage`, `vitest run --coverage`).\n",
@@ -313,7 +321,7 @@ program
             if (drops.length > 0) {
               for (const d of drops) {
                 process.stderr.write(
-                  `lumen: coverage decreased: ${d.metric} ${d.before.toFixed(1)}% → ${d.after.toFixed(1)}%\n`,
+                  `lumen: coverage decreased: ${d.metric} ${d.before.toFixed(2)}% → ${d.after.toFixed(2)}%\n`,
                 );
               }
               process.exit(2);
@@ -328,7 +336,7 @@ program
         if (linesPct < threshold) {
           if (!opts.printPath) {
             process.stderr.write(
-              `lumen: coverage ${linesPct.toFixed(1)}% is below threshold ${threshold}%\n`,
+              `lumen: coverage ${linesPct.toFixed(2)}% is below threshold ${threshold}%\n`,
             );
           }
           process.exit(2);
@@ -340,7 +348,7 @@ program
         if (violations.length > 0) {
           for (const v of violations) {
             process.stderr.write(
-              `lumen: ${v.file}: lines ${v.actual.toFixed(1)}% below per-file threshold ${v.threshold}% (pattern: ${v.pattern})\n`,
+              `lumen: ${v.file}: lines ${v.actual.toFixed(2)}% below per-file threshold ${v.threshold}% (pattern: ${v.pattern})\n`,
             );
           }
           process.exit(2);

@@ -102,7 +102,7 @@ function coverageCards(cov: CoverageReport, threshold?: number): string {
     const cls = tone === "good" ? "green" : tone === "amber" ? "amber" : "red";
     return `<div class="stat">
       <div class="row">${icon}${label}</div>
-      <div class="value ${cls}">${m.pct.toFixed(1)}%</div>
+      <div class="value ${cls}">${m.pct.toFixed(2)}%</div>
       <div class="foot">${m.covered.toLocaleString()} / ${m.total.toLocaleString()} covered</div>
     </div>`;
   };
@@ -161,7 +161,33 @@ function coverageTable(cov: CoverageReport, threshold?: number): string {
 
 function pctCell(m: CoverageMetric, threshold?: number): string {
   const tone = pctTone(m.pct, threshold);
-  return `<td class="num cov-${tone}">${m.pct.toFixed(1)}% <span class="dim">(${m.covered}/${m.total})</span></td>`;
+  return `<td class="num cov-${tone}">${m.pct.toFixed(2)}% <span class="dim">(${m.covered}/${m.total})</span></td>`;
+}
+
+function untestedSection(cov: CoverageReport): string {
+  const u = cov.untested;
+  if (!u || u.count === 0) return "";
+  const top = u.files.slice(0, 20);
+  const rows = top
+    .map(
+      (f) =>
+        `<tr><td class="mono path">${esc(f.path)}</td><td class="num">${f.lines.toLocaleString()}</td></tr>`,
+    )
+    .join("");
+  const more = u.count > top.length ? `<div class="dim" style="padding:8px 14px">…and ${u.count - top.length} more</div>` : "";
+  return `<section class="panel" style="margin-bottom:20px">
+    <div class="panel-head">
+      <span>Untested source files <span class="dim">· no coverage data</span></span>
+      <span class="dim">${u.count} file${u.count !== 1 ? "s" : ""} · ${u.totalLines.toLocaleString()} lines</span>
+    </div>
+    <div class="panel-body tight">
+      <table>
+        <thead><tr><th>File</th><th class="num">Lines</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      ${more}
+    </div>
+  </section>`;
 }
 
 function coverageRow(f: FileCoverage, threshold?: number): string {
@@ -261,7 +287,9 @@ export function renderReport(stats: RepoStats, options: RenderReportOptions = {}
   const avgLines = stats.totalFiles ? Math.round(stats.totalLines / stats.totalFiles) : 0;
 
   const coverageHtml = options.coverage
-    ? coverageCards(options.coverage, options.threshold) + coverageTable(options.coverage, options.threshold)
+    ? coverageCards(options.coverage, options.threshold) +
+      untestedSection(options.coverage) +
+      coverageTable(options.coverage, options.threshold)
     : "";
 
   const aiHtml = options.aiSummary ? aiSummarySection(options.aiSummary) : "";

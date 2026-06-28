@@ -146,11 +146,11 @@ The default mode in git repos. Lumen compares your current branch against the ba
 Branch : feature/parser  →  origin/main
 Changed: 3 files
 
-src/parser/index.ts     ████████░░   82.0%  ⚠
-src/util/string.ts      ██████░░░░   60.0%  ✗
-src/util/array.ts       █████████░   90.0%  ✓
+src/parser/index.ts     ████████░░   82.00%  ⚠
+src/util/string.ts      ██████░░░░   60.00%  ✗
+src/util/array.ts       █████████░   90.00%  ✓
 
-Total (changed files)   ████████░░   77.3%  ✗
+Total (changed files)   ████████░░   77.35%  ✗
   lines: 140/181  stmts: 140/181  fns: 16/22  branches: 30/44
 
 ✗ Below 80% threshold
@@ -166,6 +166,10 @@ Total (changed files)   ████████░░   77.3%  ✗
 | Changed files found but none in coverage data | Warning + file list → full-project coverage shown |
 
 ### Test coverage
+
+Lumen reports **CodeAnt-style** percentages: per-file, zero-denominator metrics (e.g. a file with no branches) are treated as **N/A** and excluded from the aggregate rather than counted as 100% covered. All percentages render with **2-decimal precision** (e.g. `82.00%`).
+
+It also surfaces an **Untested source files** sidecar: source files (`.ts .tsx .js .jsx .mjs .cjs .py .go .rs .java .kt`) that have **no coverage data at all** are listed separately so you can see what your test runner never even touched. The sidecar is purely informational — it does not change the headline %.
 
 Lumen detects your testing framework from `package.json` and config files, then finds `coverage-summary.json` and `lcov.info` on disk. Run your tests with coverage first:
 

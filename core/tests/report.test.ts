@@ -87,7 +87,7 @@ describe("renderReport (HTML)", () => {
     const html = renderReport(stats, { coverage });
     expect(html).toContain("Test Coverage");
     expect(html).toContain("vitest");
-    expect(html).toContain("60.0%");
+    expect(html).toContain("60.00%");
   });
 
   test("renders threshold pill (passed) when threshold is met", () => {

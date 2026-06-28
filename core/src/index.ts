@@ -11,4 +11,6 @@ export type {
   CoverageMetric,
   CoverageFramework,
   FindCoverageOptions,
+  UntestedFile,
+  UntestedStats,
 } from "./coverage";

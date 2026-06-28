@@ -20,12 +20,12 @@ export function filterCoverage(cov: CoverageReport, changedFiles: string[]): Cov
 function sumMetrics(files: FileCoverage[]) {
   let ls = 0, lc = 0, ss = 0, sc = 0, fs = 0, fc = 0, bs = 0, bc = 0;
   for (const f of files) {
-    ls += f.lines.total; lc += f.lines.covered;
-    ss += f.statements.total; sc += f.statements.covered;
-    fs += f.functions.total; fc += f.functions.covered;
-    bs += f.branches.total; bc += f.branches.covered;
+    if (f.lines.total > 0) { ls += f.lines.total; lc += f.lines.covered; }
+    if (f.statements.total > 0) { ss += f.statements.total; sc += f.statements.covered; }
+    if (f.functions.total > 0) { fs += f.functions.total; fc += f.functions.covered; }
+    if (f.branches.total > 0) { bs += f.branches.total; bc += f.branches.covered; }
   }
-  const p = (cov: number, tot: number) => (tot === 0 ? 100 : Math.round((cov / tot) * 1000) / 10);
+  const p = (cov: number, tot: number) => (tot <= 0 ? 0 : Math.round((cov / tot) * 10000) / 100);
   return {
     lines: { total: ls, covered: lc, pct: p(lc, ls) },
     statements: { total: ss, covered: sc, pct: p(sc, ss) },
@@ -79,14 +79,14 @@ export function formatDiffCoverageReport(opts: {
 
   for (const f of coverage.files.slice().sort((a, b) => a.lines.pct - b.lines.pct)) {
     const label = f.path.length > col ? "…" + f.path.slice(-(col - 1)) : f.path.padEnd(col);
-    const pctStr = theme.pct(f.lines.pct.toFixed(1).padStart(5) + "%", f.lines.pct, threshold);
+    const pctStr = theme.pct(f.lines.pct.toFixed(2).padStart(6) + "%", f.lines.pct, threshold);
     lines.push(`${label}  ${theme.bar(f.lines.pct, threshold)}  ${pctStr}  ${theme.status(f.lines.pct, threshold)}`);
   }
 
   lines.push(hr);
   const t = coverage.total;
   lines.push(
-    `${"Total (changed files)".padEnd(col)}  ${theme.bar(t.lines.pct, threshold)}  ${theme.pct(t.lines.pct.toFixed(1).padStart(5) + "%", t.lines.pct, threshold)}  ${theme.status(t.lines.pct, threshold)}`,
+    `${"Total (changed files)".padEnd(col)}  ${theme.bar(t.lines.pct, threshold)}  ${theme.pct(t.lines.pct.toFixed(2).padStart(6) + "%", t.lines.pct, threshold)}  ${theme.status(t.lines.pct, threshold)}`,
   );
   lines.push(theme.dim(`  lines: ${t.lines.covered}/${t.lines.total}  stmts: ${t.statements.covered}/${t.statements.total}  fns: ${t.functions.covered}/${t.functions.total}  branches: ${t.branches.covered}/${t.branches.total}`));
 
@@ -96,7 +96,7 @@ export function formatDiffCoverageReport(opts: {
     lines.push(
       pass
         ? theme.pass(`✓ Passes ${threshold}% threshold`)
-        : theme.fail(`✗ Below ${threshold}% threshold (${t.lines.pct.toFixed(1)}% / ${threshold}%)`),
+        : theme.fail(`✗ Below ${threshold}% threshold (${t.lines.pct.toFixed(2)}% / ${threshold}%)`),
     );
   }
 

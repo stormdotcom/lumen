@@ -9,6 +9,11 @@ npm install -g @ajmal_n/lumen-cli
 lumen
 ```
 
+> **0.9.1 — coverage accuracy update**
+> - Headline % now matches CodeAnt-style aggregation: zero-denominator metrics (e.g. a file with 0 branches) are treated as **N/A** and excluded from the aggregate instead of inflating it to 100%.
+> - All percentages report with **2-decimal precision** (`82.00%`, not `82.0%`).
+> - New **Untested source files** sidecar: lists source files that have **no coverage data at all** (JS/TS, Python, Go, Rust, Java, Kotlin). It's reported separately so the headline % stays apples-to-apples with what your test runner instrumented.
+
 ---
 
 ## Table of contents
@@ -116,12 +121,12 @@ Branch : feature/parser-rewrite  →  origin/main
 Changed: 4 files
 Coverage data for 4 of 4 changed files
 ────────────────────────────────────────────────────────────
-src/parser/index.ts       ████████░░   82.0%  ⚠
-src/parser/tokenizer.ts   ██████████  100.0%  ✓
-src/util/string.ts        ██████░░░░   60.0%  ✗
-src/util/array.ts         █████████░   90.0%  ✓
+src/parser/index.ts       ████████░░   82.00%  ⚠
+src/parser/tokenizer.ts   ██████████  100.00%  ✓
+src/util/string.ts        ██████░░░░   60.00%  ✗
+src/util/array.ts         █████████░   90.00%  ✓
 ────────────────────────────────────────────────────────────
-Total (changed files)     ████████░░   83.0%  ✓
+Total (changed files)     ████████░░   82.78%  ✓
   lines: 149/180  stmts: 149/180  fns: 18/22  branches: 33/44
 
 ✓ Passes 80% threshold
@@ -272,7 +277,8 @@ lumen . -f md | grep "Lines"
 | **File types** | Top 20 extensions with file count, size, and LOC |
 | **Top directories** | File count and size per top-level dir |
 | **Largest files** | The 15 biggest files |
-| **Test coverage** | Lines / Statements / Functions / Branches cards + per-file table |
+| **Test coverage** | Lines / Statements / Functions / Branches cards + per-file table (2-decimal precision, CodeAnt-style aggregation) |
+| **Untested source files** | Sidecar list of source files with **no coverage data at all** — JS/TS, Python, Go, Rust, Java, Kotlin |
 | **AI Analysis** | Plain-language summary + suggestions (if requested) |
 
 ---

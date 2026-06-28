@@ -70,16 +70,20 @@ The default in git repos. Compares your branch against the base and shows covera
 Branch : feature/parser  →  origin/main
 Changed: 3 files
 
-src/parser/index.ts     ████████░░   82.0%  ⚠
-src/util/string.ts      ██████░░░░   60.0%  ✗
-src/util/array.ts       █████████░   90.0%  ✓
+src/parser/index.ts     ████████░░   82.00%  ⚠
+src/util/string.ts      ██████░░░░   60.00%  ✗
+src/util/array.ts       █████████░   90.00%  ✓
 
-Total                   ████████░░   77.3%  ✗
+Total                   ████████░░   77.35%  ✗
 
 ✗ Below 80% threshold
 ```
 
 Gracefully falls back to full-project coverage when there is no git repo, no changed files, or no coverage data for changed files.
+
+## Coverage accuracy
+
+Lumen reports CodeAnt-style percentages with **2-decimal precision**: zero-denominator metrics (e.g. a file with 0 branches) are treated as **N/A** and excluded from the aggregate rather than counted as 100% covered. Source files (`.ts .tsx .js .jsx .mjs .cjs .py .go .rs .java .kt`) that have **no coverage data at all** are surfaced in a separate **Untested source files** sidecar — informational only, doesn't move the headline %.
 
 ## Config file
 

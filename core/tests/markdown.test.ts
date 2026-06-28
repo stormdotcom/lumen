@@ -77,7 +77,7 @@ describe("renderMarkdown", () => {
   test("includes coverage section when coverage is supplied", () => {
     const md = renderMarkdown(stats, { coverage });
     expect(md).toContain("## Test coverage — jest");
-    expect(md).toContain("80.0% (160 / 200)");
+    expect(md).toContain("80.00% (160 / 200)");
   });
 
   test("renders threshold pass/fail when threshold provided", () => {

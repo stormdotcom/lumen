@@ -61,3 +61,13 @@ directory and run [`@ajmal_n/lumen-core`](../core)'s scanner, then renders the r
 stats. The same `renderReport` function used by [`@ajmal_n/lumen-cli`](../cli) backs the
 "Export HTML" action, so the desktop's export and the CLI's report are
 byte-for-byte identical.
+
+## Coverage
+
+The coverage panel shows the four standard cards (Lines / Statements / Functions
+/ Branches) with **2-decimal precision** (`82.00%`) and CodeAnt-style
+aggregation — zero-denominator metrics are treated as N/A and excluded from the
+aggregate rather than counted as 100%. When source files exist with **no
+coverage data at all** (JS/TS, Python, Go, Rust, Java, Kotlin), an
+**untested · N files · L lines** pill appears in the panel header so you can
+see them at a glance.
