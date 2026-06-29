@@ -28,9 +28,10 @@ lumen
 8. [CLI flag reference](#cli-flag-reference)
 9. [Test framework setup](#test-framework-setup)
 10. [CI integration](#ci-integration)
-11. [Environment variables](#environment-variables)
-12. [Exit codes](#exit-codes)
-13. [Troubleshooting](#troubleshooting)
+11. [MCP server (Claude Desktop / Cursor / Claude Code)](#mcp-server)
+12. [Environment variables](#environment-variables)
+13. [Exit codes](#exit-codes)
+14. [Troubleshooting](#troubleshooting)
 
 ---
 

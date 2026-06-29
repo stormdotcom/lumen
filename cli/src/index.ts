@@ -30,7 +30,7 @@ import { loadSnapshot, saveSnapshot, compareSnapshot } from "./snapshot";
 import { openFile } from "./open";
 import { startProgress } from "./progress";
 
-const VERSION = "0.10.0";
+const VERSION = "0.11.0";
 
 function printUncoveredLines(coverage: CoverageReport): void {
   for (const f of coverage.files) {
@@ -388,7 +388,44 @@ process.on("unhandledRejection", (reason) => {
 const noArgs = process.argv.length <= 2;
 const isInteractive = !!process.stdout.isTTY && !!process.stdin.isTTY;
 
-if (noArgs && isInteractive) {
+const mcpArg = process.argv[2];
+if (mcpArg === "mcp") {
+  const sub = process.argv[3];
+  if (sub === "serve") {
+    import("./mcp")
+      .then((m) => m.runMcpServer())
+      .catch((err) => {
+        process.stderr.write(`lumen: mcp serve failed — ${(err as Error).message}\n`);
+        process.exit(1);
+      });
+  } else if (sub === "config") {
+    import("./mcp")
+      .then((m) => {
+        process.stdout.write(m.getMcpInstallSnippet() + "\n");
+      })
+      .catch((err) => {
+        process.stderr.write(`lumen: mcp config failed — ${(err as Error).message}\n`);
+        process.exit(1);
+      });
+  } else if (sub === "tools") {
+    import("./mcp")
+      .then((m) => {
+        process.stdout.write(JSON.stringify(m.getMcpToolList(), null, 2) + "\n");
+      })
+      .catch((err) => {
+        process.stderr.write(`lumen: mcp tools failed — ${(err as Error).message}\n`);
+        process.exit(1);
+      });
+  } else {
+    process.stderr.write(
+      "Usage: lumen mcp <serve|config|tools>\n" +
+        "  serve    Run the Lumen MCP server over stdio (for Claude Desktop, Cursor, Claude Code)\n" +
+        "  config   Print the JSON snippet to add to your MCP host's config file\n" +
+        "  tools    List the tools this server exposes\n",
+    );
+    process.exit(sub ? 1 : 0);
+  }
+} else if (noArgs && isInteractive) {
   import("./menu")
     .then((m) => m.runMenu())
     .catch((err) => {

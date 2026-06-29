@@ -50,6 +50,7 @@ type ActionValue =
   | "change-repo"
   | "change-cmd"
   | "change-base"
+  | "mcp-setup"
   | "exit";
 
 interface MenuChoice {
@@ -227,6 +228,11 @@ async function runIteration(p: Clack, state: IterState): Promise<void> {
       hint: currentBase,
     });
   }
+  choices.push({
+    value: "mcp-setup",
+    label: "MCP · setup (expose Lumen to Claude Desktop / Cursor)",
+    hint: "stdio MCP server",
+  });
   choices.push({ value: "exit", label: "Exit" });
 
   const action = (await p.select({
@@ -253,6 +259,11 @@ async function runIteration(p: Clack, state: IterState): Promise<void> {
 
   if (action === "change-base") {
     await runChangeBaseBranch(p, state.repoPath);
+    return;
+  }
+
+  if (action === "mcp-setup") {
+    await runMcpSetup(p);
     return;
   }
 
@@ -353,7 +364,11 @@ async function runIteration(p: Clack, state: IterState): Promise<void> {
   })();
   let coverage: CoverageReport | null = null;
   try {
-    coverage = findCoverage(state.repoPath);
+    const cfg = loadConfig(state.repoPath);
+    coverage = findCoverage(state.repoPath, {
+      exclude: cfg.coverageExclude,
+      includeTests: cfg.includeTests,
+    });
   } catch {
     coverage = null;
   }
@@ -835,5 +850,48 @@ async function runChangeBaseBranch(p: Clack, repoPath: string): Promise<void> {
     p.log.success(next ? `Base branch set to ${next} (saved to lumen.config.json)` : "Base branch cleared (will auto-detect)");
   } catch (err) {
     p.log.error(`Could not save config: ${(err as Error).message}`);
+  }
+}
+
+async function runMcpSetup(p: Clack): Promise<void> {
+  const { getMcpInstallSnippet, getMcpToolList } = await import("./mcp");
+
+  const choice = await p.select({
+    message: "Lumen MCP server — what would you like to do?",
+    options: [
+      { value: "snippet", label: "Show install snippet (Claude Desktop / Cursor JSON)" },
+      { value: "tools", label: "List the tools the server exposes" },
+      { value: "claude-code", label: "Show `claude mcp add` command (Claude Code)" },
+      { value: "test", label: "Test the server (runs `lumen mcp serve` briefly)" },
+    ],
+  });
+  backIfCancelled(p, choice);
+
+  if (choice === "snippet") {
+    const snippet = getMcpInstallSnippet();
+    p.log.message("Add this to your MCP host's config file:");
+    p.log.message("  • Claude Desktop: %APPDATA%\\Claude\\claude_desktop_config.json (Win)  ~/Library/Application Support/Claude/claude_desktop_config.json (mac)");
+    p.log.message("  • Cursor: ~/.cursor/mcp.json");
+    p.log.message("\n" + snippet);
+    return;
+  }
+
+  if (choice === "tools") {
+    const tools = getMcpToolList();
+    for (const t of tools) p.log.message(`• ${t.name} — ${t.description}`);
+    return;
+  }
+
+  if (choice === "claude-code") {
+    p.log.message("Run this in any shell:");
+    p.log.message("  claude mcp add lumen -- lumen mcp serve");
+    return;
+  }
+
+  if (choice === "test") {
+    p.log.message("To test manually, run:");
+    p.log.message("  lumen mcp serve");
+    p.log.message("(The server speaks JSON-RPC over stdio; press Ctrl+C to stop.)");
+    return;
   }
 }

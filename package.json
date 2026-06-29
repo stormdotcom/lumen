@@ -1,6 +1,6 @@
 {
   "name": "lumen-workspace",
-  "version": "0.1.0",
+  "version": "0.11.0",
   "private": true,
   "description": "Lumen — repository insight tools (CLI + Electron desktop app).",
   "license": "MIT",
@@ -20,8 +20,5 @@
   },
   "engines": {
     "node": ">=18"
-  },
-  "dependencies": {
-    "@ajmal_n/lumen-cli": "^0.9.1"
   }
 }

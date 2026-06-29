@@ -1,6 +1,6 @@
 {
   "name": "@ajmal_n/lumen-cli",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Scan any repo and emit a self-contained HTML or Markdown report — with test-coverage breakdown, an interactive menu, and optional local-Ollama AI analysis.",
   "license": "MIT",
   "bin": {
@@ -23,6 +23,7 @@
   "dependencies": {
     "@ajmal_n/lumen-core": "0.8.0",
     "@clack/prompts": "^0.11.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "chalk": "^4.1.2",
     "commander": "^12.1.0",
     "minimatch": "^5.1.9"
