@@ -65,7 +65,7 @@ byte-for-byte identical.
 ## Coverage
 
 The coverage panel shows the four standard cards (Lines / Statements / Functions
-/ Branches) with **2-decimal precision** (`82.00%`) and CodeAnt-style
+/ Branches) with **2-decimal precision** (`82.00%`) and industry-standard
 aggregation — zero-denominator metrics are treated as N/A and excluded from the
 aggregate rather than counted as 100%. When source files exist with **no
 coverage data at all** (JS/TS, Python, Go, Rust, Java, Kotlin), an

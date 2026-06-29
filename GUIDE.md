@@ -167,7 +167,7 @@ Total (changed files)   ████████░░   77.35%  ✗
 
 ### Test coverage
 
-Lumen reports **CodeAnt-style** percentages: per-file, zero-denominator metrics (e.g. a file with no branches) are treated as **N/A** and excluded from the aggregate rather than counted as 100% covered. All percentages render with **2-decimal precision** (e.g. `82.00%`).
+Lumen reports coverage percentages using **industry-standard aggregation**: per-file, zero-denominator metrics (e.g. a file with no branches) are treated as **N/A** and excluded from the aggregate rather than counted as 100% covered. All percentages render with **2-decimal precision** (e.g. `82.00%`).
 
 It also surfaces an **Untested source files** sidecar: source files (`.ts .tsx .js .jsx .mjs .cjs .py .go .rs .java .kt`) that have **no coverage data at all** are listed separately so you can see what your test runner never even touched. The sidecar is purely informational — it does not change the headline %.
 

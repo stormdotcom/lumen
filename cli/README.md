@@ -10,7 +10,7 @@ lumen
 ```
 
 > **0.9.1 — coverage accuracy update**
-> - Headline % now matches CodeAnt-style aggregation: zero-denominator metrics (e.g. a file with 0 branches) are treated as **N/A** and excluded from the aggregate instead of inflating it to 100%.
+> - Headline % now follows **industry-standard aggregation**: zero-denominator metrics (e.g. a file with 0 branches) are treated as **N/A** and excluded from the aggregate instead of inflating it to 100%.
 > - All percentages report with **2-decimal precision** (`82.00%`, not `82.0%`).
 > - New **Untested source files** sidecar: lists source files that have **no coverage data at all** (JS/TS, Python, Go, Rust, Java, Kotlin). It's reported separately so the headline % stays apples-to-apples with what your test runner instrumented.
 
@@ -277,7 +277,7 @@ lumen . -f md | grep "Lines"
 | **File types** | Top 20 extensions with file count, size, and LOC |
 | **Top directories** | File count and size per top-level dir |
 | **Largest files** | The 15 biggest files |
-| **Test coverage** | Lines / Statements / Functions / Branches cards + per-file table (2-decimal precision, CodeAnt-style aggregation) |
+| **Test coverage** | Lines / Statements / Functions / Branches cards + per-file table (2-decimal precision, industry-standard aggregation) |
 | **Untested source files** | Sidecar list of source files with **no coverage data at all** — JS/TS, Python, Go, Rust, Java, Kotlin |
 | **AI Analysis** | Plain-language summary + suggestions (if requested) |
 
@@ -367,7 +367,7 @@ Lumen reads coverage data from **existing files on disk**. Run your tests with c
 # Minimal — json-summary is all Lumen needs
 npx jest --coverage --coverageReporters=json-summary
 
-# Also generate lcov for tools like SonarQube
+# Also generate lcov for industry-standard coverage reporting tools
 npx jest --coverage --coverageReporters=json-summary --coverageReporters=lcov
 ```
 
