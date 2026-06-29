@@ -104,9 +104,15 @@ function insertTop(top: FileEntry[], entry: FileEntry, limit: number) {
   }
 }
 
-export function scanRepo(root: string): RepoStats {
+export interface ScanRepoOptions {
+  /** Fires once per file as it's indexed (POSIX-style repo-relative path). */
+  onFile?: (relPath: string) => void;
+}
+
+export function scanRepo(root: string, options: ScanRepoOptions = {}): RepoStats {
   const absRoot = path.resolve(root);
   const rootName = path.basename(absRoot);
+  const onFile = options.onFile;
   const dirAgg = new Map<string, { files: number; bytes: number }>();
   const byExtMap = new Map<string, ExtStat>();
   const ignored: string[] = [];
@@ -153,6 +159,7 @@ export function scanRepo(root: string): RepoStats {
         const rel = path.relative(absRoot, full).split(path.sep).join("/");
         const ext = path.extname(item.name).toLowerCase() || "(no ext)";
         const lines = TEXT_EXTENSIONS.has(ext) ? countLines(full, stat.size) : 0;
+        if (onFile) onFile(rel);
 
         totalFiles += 1;
         totalBytes += stat.size;

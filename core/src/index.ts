@@ -1,5 +1,5 @@
 export { scanRepo } from "./scanner";
-export type { RepoStats, FileEntry, ExtStat } from "./scanner";
+export type { RepoStats, FileEntry, ExtStat, ScanRepoOptions } from "./scanner";
 export { renderReport } from "./report";
 export type { RenderReportOptions, AiSummary } from "./report";
 export { renderMarkdown } from "./markdown";

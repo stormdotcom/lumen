@@ -9,6 +9,12 @@ export interface LumenConfig {
   outputDir?: string;
   format?: "html" | "markdown" | "json";
   thresholds?: Record<string, number>;
+  // Glob patterns to exclude from the headline coverage aggregation, on top of
+  // the automatic test-file exclusion. Supports `*` (single segment) and `**`
+  // (any path). Example: ["src/legacy/**", "scripts/**"]
+  coverageExclude?: string[];
+  /** Set true to include test/spec files in the headline aggregation. Default: false. */
+  includeTests?: boolean;
 }
 
 function gitRoot(from: string): string | null {
@@ -59,4 +65,24 @@ export function loadConfig(startDir: string): LumenConfig {
     dir = parent;
   }
   return {};
+}
+
+/**
+ * Writes the config to `lumen.config.json` at the repo's git root (or the
+ * supplied directory if not in a git repo). Strips undefined values and
+ * empty `thresholds` blocks so the file stays tidy.
+ */
+export function saveConfig(startDir: string, config: LumenConfig): string {
+  const dir = gitRoot(startDir) ?? startDir;
+  const file = path.join(dir, "lumen.config.json");
+
+  const clean: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(config)) {
+    if (v === undefined || v === null) continue;
+    if (typeof v === "object" && !Array.isArray(v) && Object.keys(v as object).length === 0) continue;
+    clean[k] = v;
+  }
+
+  fs.writeFileSync(file, JSON.stringify(clean, null, 2) + "\n", "utf8");
+  return file;
 }

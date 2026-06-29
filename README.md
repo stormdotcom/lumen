@@ -83,7 +83,7 @@ Gracefully falls back to full-project coverage when there is no git repo, no cha
 
 ## Coverage accuracy
 
-Lumen reports coverage percentages with **2-decimal precision** following industry-standard aggregation rules: zero-denominator metrics (e.g. a file with 0 branches) are treated as **N/A** and excluded from the aggregate rather than counted as 100% covered. Source files (`.ts .tsx .js .jsx .mjs .cjs .py .go .rs .java .kt`) that have **no coverage data at all** are surfaced in a separate **Untested source files** sidecar — informational only, doesn't move the headline %.
+Lumen reports coverage percentages with **2-decimal precision** following industry-standard aggregation rules: zero-denominator metrics (e.g. a file with 0 branches) are treated as **N/A** and excluded from the aggregate rather than counted as 100% covered. Test/spec files are auto-excluded from the headline; use the `coverageExclude` config option for additional path globs (e.g. legacy modules, generated code) when matching a code-quality dashboard's number. Source files (`.ts .tsx .js .jsx .mjs .cjs .py .go .rs .java .kt`) that have **no coverage data at all** are surfaced in a separate **Untested source files** sidecar — informational only, doesn't move the headline %.
 
 ## Config file
 

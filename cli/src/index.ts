@@ -19,6 +19,7 @@ import {
   parseThreshold,
   filterCoverage,
   formatDiffCoverageReport,
+  formatFullCoverageReport,
   formatUncoveredRanges,
   checkPerFileThresholds,
   Format,
@@ -27,8 +28,9 @@ import { isGitRepo, getChangedFiles } from "./git";
 import { loadConfig } from "./config";
 import { loadSnapshot, saveSnapshot, compareSnapshot } from "./snapshot";
 import { openFile } from "./open";
+import { startProgress } from "./progress";
 
-const VERSION = "0.9.1";
+const VERSION = "0.10.0";
 
 function printUncoveredLines(coverage: CoverageReport): void {
   for (const f of coverage.files) {
@@ -136,6 +138,7 @@ program
       };
 
       const isDiffMode = !opts.all && opts.diff !== undefined;
+      const quietProgress = !!opts.printPath || !!opts.json;
 
       if (isDiffMode) {
         const base =
@@ -152,7 +155,14 @@ program
 
         let coverage: CoverageReport | null = null;
         if (opts.coverage !== false) {
-          coverage = findCoverage(resolved, { coverageDir: opts.coverageDir });
+          const prog = quietProgress ? null : startProgress("indexing coverage");
+          coverage = findCoverage(resolved, {
+            coverageDir: opts.coverageDir,
+            exclude: config.coverageExclude,
+            includeTests: config.includeTests,
+            onFile: prog ? (p) => prog.onFile(p) : undefined,
+          });
+          if (prog) prog.stop();
         }
 
         if (gitAvailable) {
@@ -247,20 +257,28 @@ program
       }
 
       log(`Scanning ${resolved}...\n`);
-      const stats = scanRepo(resolved);
+      const scanProg = quietProgress ? null : startProgress("indexing files");
+      const stats = scanRepo(resolved, {
+        onFile: scanProg ? (p) => scanProg.onFile(p) : undefined,
+      });
+      if (scanProg) scanProg.stop();
 
       let coverage: CoverageReport | null = null;
       if (opts.coverage !== false) {
         const framework = detectFramework(resolved);
         log(`Detected test framework: ${framework}\n`);
-        coverage = findCoverage(resolved, { coverageDir: opts.coverageDir });
+        const covProg = quietProgress ? null : startProgress("indexing coverage");
+        coverage = findCoverage(resolved, {
+          coverageDir: opts.coverageDir,
+          exclude: config.coverageExclude,
+          includeTests: config.includeTests,
+          onFile: covProg ? (p) => covProg.onFile(p) : undefined,
+        });
+        if (covProg) covProg.stop();
         if (coverage) {
-          log(
-            `Coverage: lines ${coverage.total.lines.pct.toFixed(2)}% · functions ${coverage.total.functions.pct.toFixed(2)}% · branches ${coverage.total.branches.pct.toFixed(2)}% (${coverage.files.length} files)\n`,
-          );
-          if (coverage.untested && coverage.untested.count > 0) {
-            log(
-              `Untested: ${coverage.untested.count} source file${coverage.untested.count !== 1 ? "s" : ""} · ${coverage.untested.totalLines.toLocaleString()} lines (no coverage data)\n`,
+          if (!quietProgress) {
+            process.stdout.write(
+              "\n" + formatFullCoverageReport({ coverage, threshold }) + "\n\n",
             );
           }
         } else {

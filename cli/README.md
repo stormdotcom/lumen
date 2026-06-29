@@ -512,6 +512,8 @@ Persist flags per-repo. Lumen searches for `lumen.config.json`, `.lumenrc` (JSON
   "format": "html",
   "outputDir": "./reports",
   "baseBranch": "origin/main",
+  "coverageExclude": ["src/legacy/**", "scripts/**"],
+  "includeTests": false,
   "thresholds": {
     "src/legacy/**": 40,
     "src/generated/**": 0,
@@ -530,6 +532,12 @@ Or in `package.json`:
 ```
 
 **Flag precedence:** CLI flags always override config file values.
+
+**`baseBranch`:** default git ref to diff against when `--diff` is used without an argument. If unset, Lumen auto-detects in this order: `origin/main` → `origin/master` → `main` → `master` → `HEAD~1`. You can also set this interactively via **Change base branch** in the menu.
+
+**`coverageExclude`:** glob patterns (`*` = single segment, `**` = any path) excluded from the **headline coverage aggregation** on top of the automatic test-file exclusion. Use this to bring Lumen's number in line with what your code-quality dashboard reports (test runners often instrument files like `src/legacy/`, `scripts/`, or `*.config.ts` that quality tools exclude).
+
+**`includeTests`:** set to `true` to include test/spec files in the headline aggregation. Off by default — matches what industry-standard reporting tools do.
 
 **`thresholds`:** per-file coverage gates using glob patterns — first match wins. Violations cause exit `2`.
 

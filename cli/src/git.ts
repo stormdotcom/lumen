@@ -49,6 +49,32 @@ export interface ChangedFilesResult {
   current: string;
 }
 
+/**
+ * Returns local + remote-tracking branches, most recently committed first.
+ * Used by the interactive menu to offer a base-branch picker.
+ */
+export function listBranches(cwd: string): string[] {
+  try {
+    const out = git(
+      "for-each-ref --sort=-committerdate --format=%(refname:short) refs/heads refs/remotes",
+      cwd,
+    );
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const raw of out.split("\n")) {
+      const ref = raw.trim();
+      if (!ref) continue;
+      if (ref.endsWith("/HEAD")) continue;
+      if (seen.has(ref)) continue;
+      seen.add(ref);
+      result.push(ref);
+    }
+    return result;
+  } catch {
+    return [];
+  }
+}
+
 export function getChangedFiles(cwd: string, base?: string): ChangedFilesResult {
   const current = getCurrentBranch(cwd);
   const resolvedBase = base || detectBaseBranch(cwd);

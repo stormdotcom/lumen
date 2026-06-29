@@ -14,7 +14,8 @@ import { downloadsDir, fileUrl } from "./paths";
 import { runTestCommand, lastLines } from "./runner";
 import { safeSlug, timestamp, filterCoverage, formatDiffCoverageReport } from "./util";
 import { theme } from "./theme";
-import { isGitRepo, getChangedFiles } from "./git";
+import { isGitRepo, getChangedFiles, detectBaseBranch, listBranches } from "./git";
+import { loadConfig, saveConfig } from "./config";
 import {
   probeAll,
   summarize,
@@ -48,12 +49,20 @@ type ActionValue =
   | "ai"
   | "change-repo"
   | "change-cmd"
+  | "change-base"
   | "exit";
 
 interface MenuChoice {
   value: ActionValue;
   label: string;
   hint?: string;
+}
+
+class BackToMenu extends Error {
+  constructor() {
+    super("BACK_TO_MENU");
+    this.name = "BackToMenu";
+  }
 }
 
 function pkgTestScript(dir: string): string | null {
@@ -68,6 +77,10 @@ function pkgTestScript(dir: string): string | null {
   }
 }
 
+/**
+ * Exits the app. Use only on the top-level main-menu prompt — Escape there
+ * means the user wants to quit.
+ */
 function cancelIfNeeded(p: Clack, v: unknown): asserts v is Exclude<typeof v, symbol> {
   if (p.isCancel(v)) {
     p.cancel("Cancelled.");
@@ -75,11 +88,19 @@ function cancelIfNeeded(p: Clack, v: unknown): asserts v is Exclude<typeof v, sy
   }
 }
 
+/**
+ * Throws BackToMenu on cancel. Use in sub-prompts — Escape there means "go
+ * back to the main menu", not "quit the app".
+ */
+function backIfCancelled(p: Clack, v: unknown): asserts v is Exclude<typeof v, symbol> {
+  if (p.isCancel(v)) throw new BackToMenu();
+}
+
 function pct(n: number) {
   return `${n.toFixed(2)}%`;
 }
 
-async function promptRepoPath(p: Clack, initial: string): Promise<string> {
+async function promptRepoPath(p: Clack, initial: string, exitOnCancel = false): Promise<string> {
   const v = await p.text({
     message: "Repository path",
     placeholder: initial,
@@ -96,18 +117,20 @@ async function promptRepoPath(p: Clack, initial: string): Promise<string> {
       return undefined;
     },
   });
-  cancelIfNeeded(p, v);
+  if (exitOnCancel) cancelIfNeeded(p, v);
+  else backIfCancelled(p, v);
   return path.resolve(String(v || initial));
 }
 
-async function promptTestCmd(p: Clack, repoPath: string, initial?: string): Promise<string> {
+async function promptTestCmd(p: Clack, repoPath: string, initial?: string, exitOnCancel = false): Promise<string> {
   const detected = initial || pkgTestScript(repoPath) || "npm test";
   const v = await p.text({
     message: "Test command (leave blank to skip running tests)",
     placeholder: detected,
     initialValue: detected,
   });
-  cancelIfNeeded(p, v);
+  if (exitOnCancel) cancelIfNeeded(p, v);
+  else backIfCancelled(p, v);
   return String(v || "").trim();
 }
 
@@ -125,16 +148,20 @@ export async function runMenu(): Promise<void> {
   p.intro("lumen · interactive mode");
 
   const state: IterState = {
-    repoPath: await promptRepoPath(p, process.cwd()),
+    repoPath: await promptRepoPath(p, process.cwd(), true),
     testCmd: "",
     exit: false,
   };
-  state.testCmd = await promptTestCmd(p, state.repoPath);
+  state.testCmd = await promptTestCmd(p, state.repoPath, undefined, true);
 
   while (!state.exit) {
     try {
       await runIteration(p, state);
     } catch (err) {
+      if (err instanceof BackToMenu) {
+        // User pressed Escape in a sub-prompt — just return to main menu.
+        continue;
+      }
       p.log.error(`Something went wrong: ${(err as Error)?.message ?? String(err)}`);
       const cont = await p.confirm({
         message: "Return to the menu?",
@@ -191,6 +218,15 @@ async function runIteration(p: Clack, state: IterState): Promise<void> {
     label: "Change test command",
     hint: state.testCmd || "(none)",
   });
+  if (isGit) {
+    const cfg = loadConfig(state.repoPath);
+    const currentBase = cfg.baseBranch || detectBaseBranch(state.repoPath) || "(none)";
+    choices.push({
+      value: "change-base",
+      label: "Change base branch (for diff coverage)",
+      hint: currentBase,
+    });
+  }
   choices.push({ value: "exit", label: "Exit" });
 
   const action = (await p.select({
@@ -212,6 +248,11 @@ async function runIteration(p: Clack, state: IterState): Promise<void> {
 
   if (action === "change-cmd") {
     state.testCmd = await promptTestCmd(p, state.repoPath, state.testCmd);
+    return;
+  }
+
+  if (action === "change-base") {
+    await runChangeBaseBranch(p, state.repoPath);
     return;
   }
 
@@ -239,7 +280,7 @@ async function runIteration(p: Clack, state: IterState): Promise<void> {
           hint: pp.detail,
         })),
       });
-      cancelIfNeeded(p, providerChoice);
+      backIfCancelled(p, providerChoice);
       chosen = availableProviders.find((pp) => pp.provider === providerChoice)!;
     }
     aiProvider = chosen.provider;
@@ -249,7 +290,7 @@ async function runIteration(p: Clack, state: IterState): Promise<void> {
       initialValue: def,
       options: chosen.models.map((m) => ({ value: m, label: m })),
     });
-    cancelIfNeeded(p, modelChoice);
+    backIfCancelled(p, modelChoice);
     aiModel = String(modelChoice);
   }
 
@@ -364,7 +405,7 @@ async function runIteration(p: Clack, state: IterState): Promise<void> {
         message: "Generate the report without AI analysis?",
         initialValue: true,
       });
-      cancelIfNeeded(p, proceed);
+      backIfCancelled(p, proceed);
       if (!proceed) return;
     }
   }
@@ -749,4 +790,50 @@ function stripCodeFence(text: string): string {
     .replace(/^```[\w]*\n?/, "")
     .replace(/\n?```$/, "")
     .trim();
+}
+
+async function runChangeBaseBranch(p: Clack, repoPath: string): Promise<void> {
+  const cfg = loadConfig(repoPath);
+  const auto = detectBaseBranch(repoPath);
+  const current = cfg.baseBranch || auto || "(none)";
+
+  const branches = listBranches(repoPath);
+  const recent = branches.slice(0, 12);
+
+  const options: { value: string; label: string; hint?: string }[] = [];
+  if (auto) options.push({ value: auto, label: auto, hint: "auto-detected" });
+  for (const b of recent) {
+    if (b === auto) continue;
+    options.push({ value: b, label: b });
+  }
+  options.push({ value: "__custom__", label: "Type a custom branch name…" });
+  options.push({ value: "__clear__", label: "Clear (use auto-detect)" });
+
+  const choice = await p.select({
+    message: `Base branch for diff coverage (current: ${current})`,
+    options,
+  });
+  backIfCancelled(p, choice);
+
+  let next: string | undefined;
+  if (choice === "__clear__") {
+    next = undefined;
+  } else if (choice === "__custom__") {
+    const typed = await p.text({
+      message: "Branch name (e.g. origin/develop)",
+      placeholder: auto || "origin/main",
+      initialValue: cfg.baseBranch || "",
+    });
+    backIfCancelled(p, typed);
+    next = String(typed || "").trim() || undefined;
+  } else {
+    next = String(choice);
+  }
+
+  try {
+    saveConfig(repoPath, { ...cfg, baseBranch: next });
+    p.log.success(next ? `Base branch set to ${next} (saved to lumen.config.json)` : "Base branch cleared (will auto-detect)");
+  } catch (err) {
+    p.log.error(`Could not save config: ${(err as Error).message}`);
+  }
 }

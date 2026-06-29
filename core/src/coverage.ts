@@ -49,6 +49,8 @@ export interface CoverageReport {
     branches: CoverageMetric;
   };
   files: FileCoverage[];
+  /** Paths excluded from headline aggregation (tests + user excludes). */
+  excluded?: string[];
   untested?: UntestedStats;
 }
 
@@ -311,7 +313,11 @@ function countFileLines(filePath: string): number {
   }
 }
 
-function findUntestedFiles(absRoot: string, covered: Set<string>): UntestedStats {
+function findUntestedFiles(
+  absRoot: string,
+  covered: Set<string>,
+  onFile?: (relPath: string) => void,
+): UntestedStats {
   const files: UntestedFile[] = [];
   let totalLines = 0;
   const norm = (p: string) => p.split(path.sep).join("/");
@@ -333,6 +339,7 @@ function findUntestedFiles(absRoot: string, covered: Set<string>): UntestedStats
         const ext = path.extname(item.name).toLowerCase();
         if (!UNTESTED_SOURCE_EXTS.has(ext)) continue;
         const rel = norm(path.relative(absRoot, full));
+        if (onFile) onFile(rel);
         if (isTestFile(rel)) continue;
         if (covered.has(rel)) continue;
         const lines = countFileLines(full);
@@ -384,6 +391,31 @@ export function detectFramework(absRoot: string): CoverageFramework {
 
 export interface FindCoverageOptions {
   coverageDir?: string;
+  /**
+   * Extra glob patterns to exclude from headline aggregation, on top of the
+   * automatic test-file exclusion. Supports `*` (single segment) and `**`
+   * (any path). Paths are matched against the repo-relative POSIX path.
+   */
+  exclude?: string[];
+  /** Disable the automatic test/spec file exclusion. Default: false. */
+  includeTests?: boolean;
+  /** Per-file progress callback fired during the untested-files scan. */
+  onFile?: (relPath: string) => void;
+}
+
+function globToRegex(glob: string): RegExp {
+  const escaped = glob.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = escaped
+    .replace(/\*\*/g, "\x00")
+    .replace(/\*/g, "[^/]*")
+    .replace(/\x00/g, ".*");
+  return new RegExp("^" + pattern + "$");
+}
+
+function buildExcludeMatcher(patterns: string[] | undefined): (rel: string) => boolean {
+  if (!patterns || patterns.length === 0) return () => false;
+  const regexes = patterns.map(globToRegex);
+  return (rel) => regexes.some((r) => r.test(rel));
 }
 
 export function findCoverage(root: string, options: FindCoverageOptions = {}): CoverageReport | null {
@@ -426,11 +458,23 @@ export function findCoverage(root: string, options: FindCoverageOptions = {}): C
   for (const file of summaryFiles) groups.push(parseSummary(file, absRoot));
   for (const file of lcovFiles) groups.push(parseLcov(file, absRoot));
 
-  const files = mergeFiles(groups).sort((a, b) => a.path.localeCompare(b.path));
+  const allFiles = mergeFiles(groups).sort((a, b) => a.path.localeCompare(b.path));
   const sources = [...summaryFiles, ...lcovFiles].map((f) => normalizeRelPath(absRoot, f));
 
-  const coveredPaths = new Set(files.map((f) => f.path));
-  const untested = findUntestedFiles(absRoot, coveredPaths);
+  const matchesExclude = buildExcludeMatcher(options.exclude);
+  const excludedPaths: string[] = [];
+  const files = allFiles.filter((f) => {
+    const isTest = !options.includeTests && isTestFile(f.path);
+    const isExcluded = matchesExclude(f.path);
+    if (isTest || isExcluded) {
+      excludedPaths.push(f.path);
+      return false;
+    }
+    return true;
+  });
+
+  const coveredPaths = new Set(allFiles.map((f) => f.path));
+  const untested = findUntestedFiles(absRoot, coveredPaths, options.onFile);
 
   return {
     root: absRoot,
@@ -438,6 +482,7 @@ export function findCoverage(root: string, options: FindCoverageOptions = {}): C
     sources,
     total: totalsFromFiles(files),
     files,
+    excluded: excludedPaths.length > 0 ? excludedPaths : undefined,
     untested,
   };
 }

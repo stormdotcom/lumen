@@ -103,6 +103,67 @@ export function formatDiffCoverageReport(opts: {
   return lines.join("\n");
 }
 
+export function formatFullCoverageReport(opts: {
+  coverage: CoverageReport;
+  threshold?: number;
+}): string {
+  const { coverage, threshold = 80 } = opts;
+  const lines: string[] = [];
+  const hr = theme.hr(60);
+  const t = coverage.total;
+
+  lines.push(theme.accent("Coverage"));
+  lines.push(hr);
+
+  const sorted = coverage.files.slice().sort((a, b) => a.lines.pct - b.lines.pct);
+  const visible = sorted.slice(0, 30);
+  const maxPathLen = Math.max(...visible.map((f) => f.path.length), 4);
+  const col = Math.min(maxPathLen, 48);
+
+  for (const f of visible) {
+    const label = f.path.length > col ? "…" + f.path.slice(-(col - 1)) : f.path.padEnd(col);
+    const pctStr = theme.pct(f.lines.pct.toFixed(2).padStart(6) + "%", f.lines.pct, threshold);
+    lines.push(`${label}  ${theme.bar(f.lines.pct, threshold)}  ${pctStr}  ${theme.status(f.lines.pct, threshold)}`);
+  }
+  if (sorted.length > visible.length) {
+    lines.push(theme.dim(`  …and ${sorted.length - visible.length} more files`));
+  }
+
+  lines.push(hr);
+  const totalLabel = `Total (${coverage.files.length} file${coverage.files.length !== 1 ? "s" : ""})`.padEnd(col);
+  lines.push(
+    `${totalLabel}  ${theme.bar(t.lines.pct, threshold)}  ${theme.pct(t.lines.pct.toFixed(2).padStart(6) + "%", t.lines.pct, threshold)}  ${theme.status(t.lines.pct, threshold)}`,
+  );
+  lines.push(
+    theme.dim(
+      `  lines: ${t.lines.covered}/${t.lines.total}  stmts: ${t.statements.covered}/${t.statements.total}  fns: ${t.functions.covered}/${t.functions.total}  branches: ${t.branches.covered}/${t.branches.total}`,
+    ),
+  );
+
+  if (coverage.excluded && coverage.excluded.length > 0) {
+    lines.push(theme.dim(`  excluded from headline: ${coverage.excluded.length} file${coverage.excluded.length !== 1 ? "s" : ""} (tests + config)`));
+  }
+  if (coverage.untested && coverage.untested.count > 0) {
+    lines.push(
+      theme.dim(
+        `  untested source files: ${coverage.untested.count} · ${coverage.untested.totalLines.toLocaleString()} lines (no coverage data)`,
+      ),
+    );
+  }
+
+  if (threshold) {
+    const pass = t.lines.pct >= threshold;
+    lines.push("");
+    lines.push(
+      pass
+        ? theme.pass(`✓ Passes ${threshold}% threshold`)
+        : theme.fail(`✗ Below ${threshold}% threshold (${t.lines.pct.toFixed(2)}% / ${threshold}%)`),
+    );
+  }
+
+  return lines.join("\n");
+}
+
 export function safeSlug(s: string): string {
   return s.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "repo";
 }
