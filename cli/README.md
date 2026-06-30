@@ -487,6 +487,61 @@ jobs:
 
 ---
 
+## MCP server
+
+Lumen ships an [MCP](https://modelcontextprotocol.io) server so AI assistants (Claude Desktop, Cursor, Claude Code, etc.) can call Lumen directly — no API keys, no source-code uploads. Tool calls run locally over stdio.
+
+### Start the server
+
+```bash
+lumen mcp serve              # speaks MCP over stdio — connect from your host app
+lumen mcp config             # prints the JSON snippet to paste into your host config
+lumen mcp tools              # prints the tool list (name + description)
+```
+
+The menu's **MCP · setup** entry walks you through the same options interactively.
+
+### Tools exposed
+
+| Tool | What it does |
+|---|---|
+| `scan_repo` | File-tree statistics (file counts, sizes, line counts, language breakdown). |
+| `coverage_summary` | Aggregated coverage (lines/statements/functions/branches), auto-excluding test files. |
+| `diff_coverage` | Coverage filtered to files changed vs. the base branch — for PR / CI workflows. |
+| `untested_files` | Source files with no coverage data at all. |
+| `detect_framework` | Reports jest / vitest / mocha / jasmine / karma / ava / tap / nx / unknown. |
+| `render_report` | Writes a self-contained HTML or Markdown report to disk and returns the path. |
+
+All tools take an optional `path` argument (defaults to the host's current working directory).
+
+### Connect from Claude Desktop / Cursor
+
+Run `lumen mcp config` and paste the output into your host's MCP config file:
+
+- **Claude Desktop** — `%APPDATA%\Claude\claude_desktop_config.json` (Windows) or `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
+- **Cursor** — `~/.cursor/mcp.json`
+
+```json
+{
+  "mcpServers": {
+    "lumen": {
+      "command": "lumen",
+      "args": ["mcp", "serve"]
+    }
+  }
+}
+```
+
+### Connect from Claude Code
+
+```bash
+claude mcp add lumen -- lumen mcp serve
+```
+
+Then ask: *"Use lumen to check coverage on the current branch"* and the assistant will call `diff_coverage` directly.
+
+---
+
 ## Environment variables
 
 | Variable | Default | Description |

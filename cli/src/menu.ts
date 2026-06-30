@@ -889,9 +889,51 @@ async function runMcpSetup(p: Clack): Promise<void> {
   }
 
   if (choice === "test") {
-    p.log.message("To test manually, run:");
-    p.log.message("  lumen mcp serve");
-    p.log.message("(The server speaks JSON-RPC over stdio; press Ctrl+C to stop.)");
+    await runMcpSmokeTest(p);
     return;
+  }
+}
+
+async function runMcpSmokeTest(p: Clack): Promise<void> {
+  const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+  const { StdioClientTransport } = await import("@modelcontextprotocol/sdk/client/stdio.js");
+
+  const entry = path.join(__dirname, "index.js");
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: [entry, "mcp", "serve"],
+  });
+  const client = new Client(
+    { name: "lumen-smoke-test", version: "0.11.0" },
+    { capabilities: {} },
+  );
+
+  const started = Date.now();
+  const timeoutMs = 8000;
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`timed out after ${timeoutMs}ms`)),
+      timeoutMs,
+    );
+  });
+
+  try {
+    await Promise.race([client.connect(transport), timeout]);
+    const { tools } = await Promise.race([client.listTools(), timeout]);
+    const elapsed = Date.now() - started;
+    const names = tools.map((t) => t.name).join(", ");
+    p.log.success(
+      `Server responded in ${elapsed}ms — ${tools.length} tools (${names})`,
+    );
+  } catch (err) {
+    p.log.error(`Smoke test failed — ${(err as Error).message}`);
+  } finally {
+    if (timer) clearTimeout(timer);
+    try {
+      await client.close();
+    } catch {
+      // transport may already be closed if the child crashed; ignore
+    }
   }
 }
