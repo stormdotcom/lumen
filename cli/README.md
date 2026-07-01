@@ -29,7 +29,8 @@ lumen
 9. [Test framework setup](#test-framework-setup)
 10. [CI integration](#ci-integration)
 11. [MCP server (Claude Desktop / Cursor / Claude Code)](#mcp-server)
-12. [Environment variables](#environment-variables)
+12. [Git hooks](#git-hooks)
+13. [Environment variables](#environment-variables)
 13. [Exit codes](#exit-codes)
 14. [Troubleshooting](#troubleshooting)
 
@@ -240,6 +241,26 @@ Suggestions:
 2. Write a negative test for the parser when input is null or undefined.
 3. Consider adding a coverage threshold check to CI at 80% to catch regressions.
 ```
+
+### Teaching the AI about your repo
+
+Drop short markdown notes into `.lumen/rules/` at the repo root and they'll be injected into every AI prompt as repository conventions. Keeps the AI from suggesting things you've already decided against.
+
+```
+.lumen/rules/
+├── INSTRUCTIONS.md   # read first
+├── design.md
+└── style.md
+```
+
+```markdown
+<!-- INSTRUCTIONS.md -->
+- Branches above 70% in `src/utils/` are acceptable.
+- `src/legacy/` is intentionally untested — do not suggest tests there.
+- Prefer table-driven tests over per-case `it` blocks.
+```
+
+`INSTRUCTIONS.md` is loaded first; the rest are appended alphabetically. The whole bundle is capped at **3000 characters** — short, high-signal rules outperform long manuals.
 
 ---
 
@@ -539,6 +560,57 @@ claude mcp add lumen -- lumen mcp serve
 ```
 
 Then ask: *"Use lumen to check coverage on the current branch"* and the assistant will call `diff_coverage` directly.
+
+---
+
+## Git hooks
+
+Wire the diff-coverage gate into git so it runs automatically. The hook is **per-repo**, **opt-in**, and never touches your global git config — no conflict with Husky / pre-commit / lefthook.
+
+### Install
+
+```bash
+lumen hooks install              # pre-push (default — recommended)
+lumen hooks install --pre-commit # pre-commit instead
+lumen hooks install --force      # overwrite a non-Lumen hook
+```
+
+The installed hook runs:
+
+```sh
+exec lumen . --diff -t "${LUMEN_THRESHOLD:-80}"
+```
+
+- **Why pre-push by default?** Coverage data is usually fresh from the last test run, and blocking a push is the same gate CI would enforce a minute later. Pre-commit forces every commit to re-trust coverage state.
+- **Threshold:** comes from `lumen.config.json` (`threshold` field) at install time, or defaults to `80`. Override at run time without reinstalling by exporting `LUMEN_THRESHOLD=90`.
+- **Foreign hooks are safe:** if a hook is already there and isn't Lumen's, install refuses unless you pass `--force`.
+
+### Status
+
+```bash
+lumen hooks status
+```
+
+Reports the resolved hooks directory, the threshold (and whether it came from config or default), and the state of `pre-push` / `pre-commit`: `not installed`, `installed (ours)`, or `present (not ours)`.
+
+### Uninstall
+
+```bash
+lumen hooks uninstall
+```
+
+Removes only hooks Lumen owns (identified by a marker comment in the hook script). Foreign hooks are left untouched.
+
+### Disable for one commit
+
+```bash
+git commit --no-verify
+git push --no-verify
+```
+
+### Menu shortcut
+
+The interactive menu's **"Hooks · setup"** entry walks you through install / status / uninstall — same as the CLI commands above.
 
 ---
 

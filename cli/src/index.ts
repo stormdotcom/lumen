@@ -425,6 +425,73 @@ if (mcpArg === "mcp") {
     );
     process.exit(sub ? 1 : 0);
   }
+} else if (mcpArg === "hooks") {
+  const sub = process.argv[3];
+  const flags = process.argv.slice(4);
+  const usePreCommit = flags.includes("--pre-commit");
+  const force = flags.includes("--force");
+  const cwd = process.cwd();
+
+  if (sub === "install") {
+    import("./hooks")
+      .then((h) => {
+        const r = h.installHook(cwd, {
+          hook: usePreCommit ? "pre-commit" : "pre-push",
+          force,
+        });
+        const verb = r.replaced === "ours" ? "Replaced" : r.replaced === "foreign" ? "Overwrote" : "Installed";
+        process.stdout.write(`${verb} ${r.hook} hook at ${r.hookPath}\n`);
+        process.stdout.write(`On push, this runs: lumen . --diff -t "\${LUMEN_THRESHOLD:-80}"\n`);
+      })
+      .catch((err) => {
+        process.stderr.write(`lumen: hooks install failed — ${(err as Error).message}\n`);
+        process.exit(1);
+      });
+  } else if (sub === "uninstall") {
+    import("./hooks")
+      .then((h) => {
+        const r = h.uninstallHooks(cwd);
+        if (r.removed.length === 0) {
+          process.stdout.write("No Lumen-owned hooks were installed in this repo.\n");
+        } else {
+          process.stdout.write(`Removed: ${r.removed.join(", ")}\n`);
+        }
+        const foreign = r.skipped.filter((s) => s.reason === "foreign").map((s) => s.hook);
+        if (foreign.length > 0) {
+          process.stdout.write(`Left untouched (not ours): ${foreign.join(", ")}\n`);
+        }
+      })
+      .catch((err) => {
+        process.stderr.write(`lumen: hooks uninstall failed — ${(err as Error).message}\n`);
+        process.exit(1);
+      });
+  } else if (sub === "status") {
+    import("./hooks")
+      .then((h) => {
+        const s = h.hookStatus(cwd);
+        process.stdout.write(`Hooks dir: ${s.hooksDir}\n`);
+        process.stdout.write(`Threshold: ${s.threshold}% (${s.thresholdSource})\n`);
+        for (const e of s.entries) {
+          const tag =
+            e.state === "ours" ? "installed (ours)" :
+            e.state === "foreign" ? "present (not ours)" :
+            "not installed";
+          process.stdout.write(`  ${e.hook.padEnd(10)} ${tag}\n`);
+        }
+      })
+      .catch((err) => {
+        process.stderr.write(`lumen: hooks status failed — ${(err as Error).message}\n`);
+        process.exit(1);
+      });
+  } else {
+    process.stderr.write(
+      "Usage: lumen hooks <install|uninstall|status> [--pre-commit] [--force]\n" +
+        "  install    Install a git hook that runs `lumen . --diff -t <threshold>` (default: pre-push)\n" +
+        "  uninstall  Remove Lumen-owned hooks from this repo (leaves other hooks alone)\n" +
+        "  status     Show which hooks are installed and the active threshold\n",
+    );
+    process.exit(sub ? 1 : 0);
+  }
 } else if (noArgs && isInteractive) {
   import("./menu")
     .then((m) => m.runMenu())

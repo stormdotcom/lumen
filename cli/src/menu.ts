@@ -20,6 +20,7 @@ import {
   probeAll,
   summarize,
   buildPrompt,
+  loadRulesBundle,
   pickDefaultModel,
   providerLabel,
   Provider,
@@ -51,6 +52,7 @@ type ActionValue =
   | "change-cmd"
   | "change-base"
   | "mcp-setup"
+  | "hooks-setup"
   | "exit";
 
 interface MenuChoice {
@@ -233,6 +235,13 @@ async function runIteration(p: Clack, state: IterState): Promise<void> {
     label: "MCP · setup (expose Lumen to Claude Desktop / Cursor)",
     hint: "stdio MCP server",
   });
+  if (isGit) {
+    choices.push({
+      value: "hooks-setup",
+      label: "Hooks · setup (auto-run coverage gate on git push)",
+      hint: "pre-push hook",
+    });
+  }
   choices.push({ value: "exit", label: "Exit" });
 
   const action = (await p.select({
@@ -264,6 +273,11 @@ async function runIteration(p: Clack, state: IterState): Promise<void> {
 
   if (action === "mcp-setup") {
     await runMcpSetup(p);
+    return;
+  }
+
+  if (action === "hooks-setup") {
+    await runHooksSetup(p, state.repoPath);
     return;
   }
 
@@ -396,6 +410,7 @@ async function runIteration(p: Clack, state: IterState): Promise<void> {
         totalLines: stats.totalLines,
         coverage,
         testStdoutTail: testResult ? lastLines(testResult.stdout || testResult.stderr, 8) : undefined,
+        rules: loadRulesBundle(state.repoPath),
       });
       const text = await summarize({
         provider: aiProvider,
@@ -935,5 +950,86 @@ async function runMcpSmokeTest(p: Clack): Promise<void> {
     } catch {
       // transport may already be closed if the child crashed; ignore
     }
+  }
+}
+
+async function runHooksSetup(p: Clack, repoPath: string): Promise<void> {
+  const hooks = await import("./hooks");
+
+  const choice = await p.select({
+    message: "Lumen git hooks — what would you like to do?",
+    options: [
+      { value: "status", label: "Show current hook status" },
+      { value: "install-prepush", label: "Install pre-push hook (recommended)" },
+      { value: "install-precommit", label: "Install pre-commit hook" },
+      { value: "uninstall", label: "Uninstall Lumen-owned hooks" },
+    ],
+  });
+  backIfCancelled(p, choice);
+
+  if (choice === "status") {
+    try {
+      const s = hooks.hookStatus(repoPath);
+      p.log.message(`Hooks dir: ${s.hooksDir}`);
+      p.log.message(`Threshold: ${s.threshold}% (${s.thresholdSource})`);
+      for (const e of s.entries) {
+        const tag =
+          e.state === "ours" ? "installed (ours)" :
+          e.state === "foreign" ? "present (not ours)" :
+          "not installed";
+        p.log.message(`  ${e.hook.padEnd(10)} ${tag}`);
+      }
+    } catch (err) {
+      p.log.error((err as Error).message);
+    }
+    return;
+  }
+
+  if (choice === "install-prepush" || choice === "install-precommit") {
+    const hook = choice === "install-precommit" ? "pre-commit" : "pre-push";
+    try {
+      const r = hooks.installHook(repoPath, { hook });
+      p.log.success(`Installed ${r.hook} hook at ${r.hookPath}`);
+      p.log.message('On run, the hook executes: lumen . --diff -t "${LUMEN_THRESHOLD:-80}"');
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (!msg.includes("--force")) {
+        p.log.error(msg);
+        return;
+      }
+      const overwrite = await p.confirm({
+        message: `${msg}\nOverwrite the existing hook?`,
+        initialValue: false,
+      });
+      if (overwrite !== true) {
+        p.log.message("Cancelled.");
+        return;
+      }
+      try {
+        const r = hooks.installHook(repoPath, { hook, force: true });
+        p.log.success(`Overwrote ${r.hook} hook at ${r.hookPath}`);
+      } catch (err2) {
+        p.log.error((err2 as Error).message);
+      }
+    }
+    return;
+  }
+
+  if (choice === "uninstall") {
+    try {
+      const r = hooks.uninstallHooks(repoPath);
+      if (r.removed.length === 0) {
+        p.log.message("No Lumen-owned hooks were installed.");
+      } else {
+        p.log.success(`Removed: ${r.removed.join(", ")}`);
+      }
+      const foreign = r.skipped.filter((s) => s.reason === "foreign").map((s) => s.hook);
+      if (foreign.length > 0) {
+        p.log.message(`Left untouched (not ours): ${foreign.join(", ")}`);
+      }
+    } catch (err) {
+      p.log.error((err as Error).message);
+    }
+    return;
   }
 }

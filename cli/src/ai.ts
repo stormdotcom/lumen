@@ -1,5 +1,51 @@
 import * as fs from "fs";
+import * as path from "path";
 import type { CoverageReport, FileCoverage } from "@ajmal_n/lumen-core";
+
+const RULES_BUNDLE_CHAR_CAP = 3000;
+
+/**
+ * Loads markdown rule files from `<root>/.lumen/rules/` and concatenates them
+ * into a single string for injection into the AI prompt. `INSTRUCTIONS.md` is
+ * placed first when present; the remaining `*.md` files follow alphabetically.
+ * The bundle is truncated at {@link RULES_BUNDLE_CHAR_CAP} characters.
+ * Returns `""` when the directory is missing or contains no markdown files.
+ */
+export function loadRulesBundle(root: string): string {
+  const dir = path.join(root, ".lumen", "rules");
+  let entries: string[];
+  try {
+    if (!fs.statSync(dir).isDirectory()) return "";
+    entries = fs.readdirSync(dir);
+  } catch {
+    return "";
+  }
+
+  const mdFiles = entries.filter((n) => n.toLowerCase().endsWith(".md"));
+  if (mdFiles.length === 0) return "";
+
+  const ordered: string[] = [];
+  const instructions = mdFiles.find((n) => n.toLowerCase() === "instructions.md");
+  if (instructions) ordered.push(instructions);
+  for (const n of mdFiles.sort((a, b) => a.localeCompare(b))) {
+    if (n !== instructions) ordered.push(n);
+  }
+
+  const parts: string[] = [];
+  for (const name of ordered) {
+    try {
+      const body = fs.readFileSync(path.join(dir, name), "utf8").trim();
+      if (body.length > 0) parts.push(`# ${name}\n\n${body}`);
+    } catch {
+      // skip unreadable files
+    }
+  }
+  if (parts.length === 0) return "";
+
+  const joined = parts.join("\n\n---\n\n");
+  if (joined.length <= RULES_BUNDLE_CHAR_CAP) return joined;
+  return joined.slice(0, RULES_BUNDLE_CHAR_CAP).trimEnd() + "\n\n… (truncated)";
+}
 
 export type Provider = "ollama" | "openai" | "anthropic";
 
@@ -140,6 +186,7 @@ export function buildPrompt(args: {
   totalLines: number;
   coverage: CoverageReport | null;
   testStdoutTail?: string;
+  rules?: string;
 }): string {
   const lines: string[] = [];
   lines.push(`Repository: ${args.repoName}`);
@@ -175,6 +222,12 @@ export function buildPrompt(args: {
     lines.push("");
     lines.push("Recent test output (tail):");
     lines.push(args.testStdoutTail);
+  }
+
+  if (args.rules && args.rules.trim().length > 0) {
+    lines.push("");
+    lines.push("Repository conventions (read these before commenting):");
+    lines.push(args.rules.trim());
   }
 
   lines.push("");
